@@ -190,6 +190,7 @@
     <div id="ascii-container"></div>
     <div id="crosshair" class="crosshair">+</div>
 
+    <div id="orbit-capture" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; touch-action: none;"></div>
     <div id="ui-layer">
         
         <div style="position: absolute; top: 20px; right: 20px; z-index: 100; pointer-events: auto;">
@@ -1075,20 +1076,39 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
 
             prevTime = time;
 
-            renderer.render(scene, camera);
+            
+            try {
+                renderer.render(scene, camera);
+            } catch(e) {
+                console.error("CRITICAL RENDER ERROR:", e);
+                alert("Erro fatal na renderizacao 3D do objeto.");
+            }
+
             if (currentRenderMode === 0) {
-                gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-                let asciiLines = [];
-                for (let y = rows - 1; y >= 0; y--) {
-                    let rowStr = "";
-                    for (let x = 0; x < cols; x++) {
-                        const idx = (y * cols + x) * 4;
-                        const luma = 0.299*pixels[idx] + 0.587*pixels[idx+1] + 0.114*pixels[idx+2];
-                        rowStr += ramp[Math.floor((luma/255)*(ramp.length-1))];
+                const renderStart = performance.now();
+                try {
+                    gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+                    
+                    const chars = new Array(rows * (cols + 1));
+                    let idx = 0;
+                    for (let y = rows - 1; y >= 0; y--) {
+                        for (let x = 0; x < cols; x++) {
+                            const pIndex = (y * cols + x) * 4;
+                            const luma = 0.299 * pixels[pIndex] + 0.587 * pixels[pIndex + 1] + 0.114 * pixels[pIndex + 2];
+                            chars[idx++] = ramp[Math.floor((luma / 255) * (ramp.length - 1))];
+                        }
+                        chars[idx++] = '\n';
                     }
-                    asciiLines.push(rowStr);
+                    asciiContainer.textContent = chars.join('');
+                } catch(err) {
+                    console.error("ASCII Render crash:", err);
+                    cycleRenderMode(); 
                 }
-                asciiContainer.textContent = asciiLines.join('\n');
+                
+                if (performance.now() - renderStart > 100) {
+                    console.warn("ASCII mode too slow, auto-switching");
+                    cycleRenderMode();
+                }
             }
         }
         animate();
@@ -1451,7 +1471,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             currentSceneData = [];
         }
 
-        const orbitControls = new THREE.OrbitControls(window.camera, document.body);
+        const orbitControls = new THREE.OrbitControls(window.camera, document.getElementById('orbit-capture'));
         orbitControls.enabled = false;
         orbitControls.enableDamping = true;
         orbitControls.dampingFactor = 0.05;
@@ -1846,27 +1866,41 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
 
             prevTime = time;
 
-            window.renderer.render(window.scene, window.camera);
+            
+            try {
+                window.renderer.render(window.scene, window.camera);
+            } catch(e) {
+                console.error("CRITICAL RENDER ERROR:", e);
+                clearCustomObjects();
+                alert("Erro fatal na renderizacao 3D. O objeto gerado corrompeu a engine e foi removido.");
+            }
+
             if (currentRenderMode === 0) {
-                gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-                
-                let asciiLines = [];
-                for (let y = rows - 1; y >= 0; y--) {
-                    let rowStr = "";
-                    for (let x = 0; x < cols; x++) {
-                        const index = (y * cols + x) * 4;
-                        const r = pixels[index];
-                        const g = pixels[index + 1];
-                        const b = pixels[index + 2];
-                        
-                        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                        const charIndex = Math.floor((luma / 255) * (ramp.length - 1));
-                        rowStr += ramp[charIndex];
+                const renderStart = performance.now();
+                try {
+                    gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+                    
+                    const chars = new Array(rows * (cols + 1));
+                    let idx = 0;
+                    for (let y = rows - 1; y >= 0; y--) {
+                        for (let x = 0; x < cols; x++) {
+                            const pIndex = (y * cols + x) * 4;
+                            const luma = 0.299 * pixels[pIndex] + 0.587 * pixels[pIndex + 1] + 0.114 * pixels[pIndex + 2];
+                            chars[idx++] = ramp[Math.floor((luma / 255) * (ramp.length - 1))];
+                        }
+                        chars[idx++] = '\n';
                     }
-                    asciiLines.push(rowStr);
+                    asciiContainer.textContent = chars.join('');
+                } catch(err) {
+                    console.error("ASCII Render crash:", err);
+                    cycleRenderMode(); 
                 }
                 
-                asciiContainer.textContent = asciiLines.join('\n');
+                if (performance.now() - renderStart > 100) {
+                    console.warn("ASCII mode too slow, auto-switching");
+                    alert("Dispositivo lento para processar texto ASCII. Mudando para Graficos 3D.");
+                    cycleRenderMode();
+                }
             }
         }
 
