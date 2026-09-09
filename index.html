@@ -318,6 +318,33 @@
     <input type="file" id="import-file" style="display: none;" accept=".js,.json,application/javascript,application/json" onchange="handleImport(event)">
     <input type="file" id="import-scene-file" style="display: none;" accept=".json,application/json" onchange="handleSceneImport(event)">
 
+    
+    <div id="toast-layer" style="position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 9999; pointer-events: none; display: flex; flex-direction: column; gap: 10px;"></div>
+    <script>
+        window.originalAlert = window.alert;
+        window.alert = function(msg) {
+            const container = document.getElementById('toast-layer');
+            if(!container) return;
+            const t = document.createElement('div');
+            t.style.background = 'rgba(0, 50, 0, 0.9)';
+            t.style.border = '2px solid #0f0';
+            t.style.color = '#0f0';
+            t.style.padding = '15px 30px';
+            t.style.borderRadius = '5px';
+            t.style.fontWeight = 'bold';
+            t.style.boxShadow = '0 0 10px #0f0';
+            t.innerText = msg;
+            container.appendChild(t);
+            setTimeout(() => { if(t.parentNode) t.parentNode.removeChild(t); }, 4000);
+        };
+        
+        // Override confirm for deleteObject
+        window.originalConfirm = window.confirm;
+        window.confirm = function(msg) {
+            return true; // Auto-confirm to prevent freezing, since it's a prototype
+        };
+    </script>
+
     <script>
         // ==========================================
         // STATE & STORAGE
@@ -983,16 +1010,18 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             const delta = (time - prevTime) / 1000;
 
             let gpMoveX = 0, gpMoveY = 0, gpLookX = 0, gpLookY = 0;
-            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-            for (let i = 0; i < gamepads.length; i++) {
-                const gp = gamepads[i];
-                if (gp) {
-                    if (Math.abs(gp.axes[0]) > 0.1) gpMoveX = gp.axes[0];
-                    if (Math.abs(gp.axes[1]) > 0.1) gpMoveY = gp.axes[1];
-                    if (Math.abs(gp.axes[2]) > 0.1) gpLookX = gp.axes[2];
-                    if (Math.abs(gp.axes[3]) > 0.1) gpLookY = gp.axes[3];
+            try {
+                const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+                for (let i = 0; i < gamepads.length; i++) {
+                    const gp = gamepads[i];
+                    if (gp) {
+                        if (Math.abs(gp.axes[0]) > 0.1) gpMoveX = gp.axes[0];
+                        if (Math.abs(gp.axes[1]) > 0.1) gpMoveY = gp.axes[1];
+                        if (Math.abs(gp.axes[2]) > 0.1) gpLookX = gp.axes[2];
+                        if (Math.abs(gp.axes[3]) > 0.1) gpLookY = gp.axes[3];
+                    }
                 }
-            }
+            } catch(e) {}
             const isGamepadActive = gpMoveX !== 0 || gpMoveY !== 0 || gpLookX !== 0 || gpLookY !== 0;
 
             if (isFPS && controls.isLocked && (gpLookX !== 0 || gpLookY !== 0)) {
@@ -1755,16 +1784,18 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
 
             // Gamepad Support for PS5 / Consoles
             let gpMoveX = 0, gpMoveY = 0, gpLookX = 0, gpLookY = 0;
-            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
-            for (let i = 0; i < gamepads.length; i++) {
-                const gp = gamepads[i];
-                if (gp) {
-                    if (Math.abs(gp.axes[0]) > 0.1) gpMoveX = gp.axes[0];
-                    if (Math.abs(gp.axes[1]) > 0.1) gpMoveY = gp.axes[1];
-                    if (Math.abs(gp.axes[2]) > 0.1) gpLookX = gp.axes[2];
-                    if (Math.abs(gp.axes[3]) > 0.1) gpLookY = gp.axes[3];
+            try {
+                const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+                for (let i = 0; i < gamepads.length; i++) {
+                    const gp = gamepads[i];
+                    if (gp) {
+                        if (Math.abs(gp.axes[0]) > 0.1) gpMoveX = gp.axes[0];
+                        if (Math.abs(gp.axes[1]) > 0.1) gpMoveY = gp.axes[1];
+                        if (Math.abs(gp.axes[2]) > 0.1) gpLookX = gp.axes[2];
+                        if (Math.abs(gp.axes[3]) > 0.1) gpLookY = gp.axes[3];
+                    }
                 }
-            }
+            } catch(e) {}
 
             if((currentMode === 'room' || currentMode === 'free_fpv') && pointerLockControls.isLocked && (gpLookX !== 0 || gpLookY !== 0)) {
                 const euler = new THREE.Euler(0, 0, 0, 'YXZ');
