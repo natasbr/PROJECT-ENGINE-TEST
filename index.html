@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dream Engine</title>
+    <title>Gerador Voxel em ASCII 3D - Web Edition</title>
     <style>
         body {
             margin: 0;
@@ -184,8 +184,6 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 </head>
 <body>
 
@@ -194,7 +192,7 @@
 
     <div id="ui-layer">
         
-        <div id="lang-container" style="position: absolute; top: 20px; right: 20px; z-index: 100; pointer-events: auto;">
+        <div style="position: absolute; top: 20px; right: 20px; z-index: 100; pointer-events: auto;">
             <select id="lang-select" onchange="setLanguage(this.value)" style="padding: 5px; background: #000; color: #0f0; border: 1px solid #0f0; outline: none; font-family: inherit; font-weight: bold; cursor: pointer;">
                 <option value="pt">🇧🇷 PT</option>
                 <option value="en">🇺🇸 EN</option>
@@ -216,7 +214,7 @@
         </div>
 
         <div id="panel-menu" class="panel active">
-            <h1 data-i18n="title">DREAM ENGINE</h1>
+            <h1 data-i18n="title">GERADOR VOXEL ASCII 3D</h1>
             
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                 <button onclick="showPanel('panel-create')" style="flex: 2;" data-i18n="btnCreate">Criar Novo</button>
@@ -225,9 +223,12 @@
             
             <button onclick="showPanel('panel-objects')" style="margin-bottom: 15px; background: #336600; border-color: #55ff00;" data-i18n="btnMyObjs">Meus Objetos</button>
 
-            <button onclick="showPanel('panel-gallery')" style="margin-bottom: 15px; background: #004488; border-color: #00aaff; color: #00aaff;" data-i18n="btnGallery">🌐 Galeria Online</button>
-
-            <button onclick="showPanel('panel-scenes')" style="margin-bottom: 15px;" data-i18n="btnCreator">Editor de Cenas</button>
+            <button onclick="enterRoom()" style="margin-bottom: 15px;" data-i18n="btnCreator">Entrar (Modo Criador)</button>
+            
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <button onclick="triggerSceneImport('room')" style="flex: 1; background: #996633; border-color: #ffaa33; color: #ffaa33;" data-i18n="btnLoadEdit">Editar Cena</button>
+                <button onclick="triggerSceneImport('free_fpv')" style="flex: 1; background: #663399; border-color: #aa77ff; color: #aa77ff;" data-i18n="btnLoadFree">Carregar (Free)</button>
+            </div>
 
             <div style="display: flex; gap: 10px; margin-bottom: 15px;">
                 <button id="res-btn-menu" onclick="cycleResolution()" style="flex: 1; background: #444; border-color: #888; color: #fff;">Resolução: Normal (V)</button>
@@ -237,76 +238,26 @@
             <button onclick="showPanel('panel-api')" style="background: #222; border-color: #555; color: #aaa;" data-i18n="btnApi">Configurar API Key (Gemini)</button>
         </div>
 
-        <div id="panel-objects" class="panel" style="max-width: 800px; width: 95%;">
-            <h2 data-i18n="btnMyObjs">Meus Objetos</h2>
-            
-            <!-- Toolbar -->
-            <div style="display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap;">
-                <input type="text" id="obj-search" data-i18n="searchPlaceholder" placeholder="Buscar / Search..." style="flex: 2; padding: 5px; min-width: 150px;" oninput="renderObjectsList()">
-                
-                <select id="obj-sort" style="flex: 1; padding: 5px; min-width: 120px;" onchange="renderObjectsList()">
-                    <option value="dateDesc">Mais Recentes</option>
-                    <option value="dateAsc">Mais Antigos</option>
-                    <option value="nameAsc">Nome (A-Z)</option>
-                    <option value="nameDesc">Nome (Z-A)</option>
-                    <option value="lastUsed">Vistos Recentes</option>
-                </select>
-                
-                <select id="obj-filter" style="flex: 1; padding: 5px; min-width: 120px;" onchange="renderObjectsList()">
-                    <option value="all">Todos / All</option>
-                    <option value="favorites">⭐ Favoritos</option>
-                </select>
-                
-                <button onclick="toggleViewMode()" id="view-mode-btn" title="Alternar Visualização" style="padding: 5px 10px; font-family: monospace;">[ Lista ]</button>
-            </div>
-
-            <!-- Tags Filter -->
-            <div id="tags-container" style="margin-bottom: 10px; display: flex; gap: 5px; flex-wrap: wrap; font-size: 12px;"></div>
-
-            <div id="objects-list" style="max-height: 400px; overflow-y: auto;"></div>
-            
-            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;" data-i18n="btnBack">Voltar</button>
-        </div>
-
-        <div id="panel-gallery" class="panel" style="max-width: 800px; width: 95%;">
-            <h2 data-i18n="galleryTitle">🌐 Galeria Online (Comunidade)</h2>
-            <p id="gallery-config-warning" style="display:none; color:#ff5555; font-size:12px;" data-i18n="galleryConfigMissing">A galeria online precisa ser configurada (Firebase) pelo dono deste site.</p>
-
-            <div style="display:flex; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
-                <input type="text" id="gallery-search" data-i18n="gallerySearchPlaceholder" placeholder="Buscar por nome/autor..." style="flex:2; padding:5px; min-width:150px;" oninput="renderGalleryList()">
-                <select id="gallery-sort" style="flex:1; padding:5px; min-width:120px;" onchange="fetchGallery(true)">
-                    <option value="recent" data-i18n="gallerySortRecent">Mais Recentes</option>
-                    <option value="likes" data-i18n="gallerySortLikes">Mais Curtidos</option>
-                </select>
-                <button onclick="fetchGallery(true)" title="Atualizar" style="padding:5px 10px;">⟳</button>
-                <button onclick="adminLogin()" title="Admin Login" style="padding:5px 10px; background:#440000; border-color:#ff0000; color:#ff0000;">🔒</button>
-            </div>
-
-            <div id="gallery-list" style="max-height: 400px; overflow-y: auto;"></div>
-            <button onclick="fetchGallery(false)" id="gallery-loadmore-btn" style="margin-top:10px; display:none; width: 100%;" data-i18n="btnLoadMore">Carregar Mais</button>
-
-            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;" data-i18n="btnBack">Voltar</button>
+        <div id="panel-objects" class="panel">
+            <h2>Meus Objetos</h2>
+            <div id="objects-list" style="max-height: 200px; overflow-y: auto;"></div>
+            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;">Voltar</button>
         </div>
 
         <div id="panel-api" class="panel">
-            <h2 data-i18n="apiConfigTitle">Configuração da API</h2>
-            
-            <p data-i18n="apiConfigCreator" style="margin-top: 10px;">Nome de Criador (Galeria):</p>
-            <input type="text" id="creator-name-input" data-i18n="creatorNamePlaceholder" placeholder="Seu Nome / Your Name">
-
-            <p data-i18n="apiConfigDesc" style="margin-top: 10px;">Insira sua Gemini API Key. Ela ficará salva com segurança apenas no <b>armazenamento local (localStorage)</b> do seu navegador.</p>
+            <h2>Configuração da API</h2>
+            <p>Insira sua Gemini API Key. Ela ficará salva com segurança apenas no <b>armazenamento local (localStorage)</b> do seu navegador.</p>
             <input type="password" id="api-key-input" placeholder="AIzaSy...">
-            
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button onclick="saveApiAndCreator()" style="flex: 1;" data-i18n="btnSaveKey">Salvar Chave</button>
-                <button onclick="deleteApiKey()" style="flex: 1; color: #ff5555; border-color: #ff5555;" data-i18n="btnDelKey">Deletar Chave</button>
+            <div style="display: flex; gap: 10px; margin-top: 10px;">
+                <button onclick="saveApiKey()" style="flex: 1;">Salvar Chave</button>
+                <button onclick="deleteApiKey()" style="flex: 1; color: #ff5555; border-color: #ff5555;">Deletar Chave</button>
             </div>
-            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;" data-i18n="btnBack">Voltar</button>
+            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;">Voltar</button>
         </div>
 
         <div id="panel-create" class="panel">
-            <h2 data-i18n="createModTitle">Criar Novo Objeto</h2>
-            <p data-i18n="chooseModel">Escolha o modelo de IA que deseja usar:</p>
+            <h2>Criar Novo Objeto</h2>
+            <p>Escolha o modelo de IA que deseja usar:</p>
             <select id="model-select">
                 <option value="gemini-3.6-flash">Gemini 3.6 Flash (Recomendado)</option>
                 <option value="gemini-3.6-pro">Gemini 3.6 Pro</option>
@@ -314,71 +265,50 @@
                 <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
                 <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
             </select>
-            <p style="margin-top: 10px;" data-i18n="baseFileOptional">Arquivo Base (Opcional - modificar objeto existente):</p>
+            <p style="margin-top: 10px;">Arquivo Base (Opcional - modificar objeto existente):</p>
             <input type="file" id="base-file-input" accept=".js,.json,application/javascript,application/json" style="margin-bottom: 10px; padding: 5px; cursor: pointer; border: 1px dashed #0f0; background: #001100;">
-            <p data-i18n="describePrompt">Descreva o que deseja criar/modificar no objeto:</p>
-            <input type="text" id="prompt-input" data-i18n="promptPlaceholder" placeholder="Ex: Uma espada mágica brilhante...">
-            <button id="generate-btn" onclick="generateObject()" style="margin-top: 10px;" data-i18n="btnGenView">Gerar e Visualizar</button>
-            <div id="loading-msg" data-i18n="loadingMsg" style="display:none; text-align:center; margin: 10px 0;">[ GERANDO VIA IA... POR FAVOR AGUARDE ]</div>
-            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;" data-i18n="btnCancelBack">Cancelar e Voltar</button>
+            <p>Descreva o que deseja criar/modificar no objeto:</p>
+            <input type="text" id="prompt-input" placeholder="Ex: Uma espada mágica brilhante...">
+            <button id="generate-btn" onclick="generateObject()" style="margin-top: 10px;">Gerar e Visualizar</button>
+            <div id="loading-msg" style="display:none; text-align:center; margin: 10px 0;">[ GERANDO VIA IA... POR FAVOR AGUARDE ]</div>
+            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;">Cancelar e Voltar</button>
         </div>
         
         <div id="panel-spawn" class="panel">
-            <h2 data-i18n="spawnMenuTitle">Escolha um objeto para spawnar</h2>
+            <h2>Escolha um objeto para spawnar</h2>
             <div id="spawn-list" style="max-height: 300px; overflow-y: auto; margin-bottom: 10px;"></div>
-            <button onclick="closeSpawnMenu()" style="color: #ff5555; border-color: #ff5555;" data-i18n="btnCancel">Cancelar</button>
+            <button onclick="closeSpawnMenu()" style="color: #ff5555; border-color: #ff5555;">Cancelar</button>
         </div>
 
         <div id="panel-export" class="panel">
             <h2 data-i18n="exportMenuTitle">EXPORTAR JOGO</h2>
-            <p id="export-target-text" style="color: #0aa; font-weight: bold; margin-bottom: 10px;"></p>
             <p data-i18n="exportNameLabel">Título do Jogo:</p>
             <input type="text" id="export-title-input" placeholder="Meu Jogo Incrível" value="ASCII 3D Game">
-            
-            <p data-i18n="exportRenderMode" style="margin-top: 10px;">Modo Gráfico Inicial:</p>
-            <select id="export-render-input">
-                <option value="0">ASCII</option>
-                <option value="1">ASCII (Color)</option>
-                <option value="2">3D</option>
-            </select>
-            
-            <p data-i18n="exportControlMode" style="margin-top: 10px;">Modo de Controle:</p>
-            <select id="export-control-input" onchange="updateExportInstructions()">
-                <option value="fpv_room" data-i18n="ctrlFpvRoom">1ª Pessoa (Preso no Quarto)</option>
-                <option value="fpv_free" data-i18n="ctrlFpvFree">1ª Pessoa (Livre)</option>
-                <option value="orbit" data-i18n="ctrlOrbit">Órbita (Mouse para girar)</option>
-            </select>
-            
-            <label style="margin-top: 10px; display: flex; align-items: center; gap: 5px; cursor: pointer;">
-                <input type="checkbox" id="export-floor-input" checked>
-                <span data-i18n="exportShowFloor">Mostrar Chão</span>
-            </label>
-
             <p data-i18n="exportInstLabel" style="margin-top: 10px;">Instruções:</p>
             <input type="text" id="export-inst-input" placeholder="WASD para mover..." value="WASD: Move | Mouse: Look | Q/E: Up/Down | V: Res | M: Render">
+            
+            <p style="margin-top: 10px; font-weight:bold;">Controles:</p>
+            <select id="export-controls-select">
+                <option value="fps">FPS (Mouse Locked + Mira)</option>
+                <option value="orbit">Mouse Livre (Sem Mira + Clique Fiel)</option>
+            </select>
+            
+            <p style="margin-top: 10px; font-weight:bold;">Render Inicial:</p>
+            <select id="export-render-initial">
+                <option value="0">ASCII</option>
+                <option value="1">Real 3D</option>
+                <option value="2">Wireframe</option>
+                <option value="3">RTX</option>
+            </select>
+            
+            <label style="display:flex; align-items:center; gap:5px; margin-top:10px; font-size:14px; cursor:pointer;">
+                <input type="checkbox" id="export-render-lock">
+                Travar Gráficos (Impede o jogador de mudar com 'M')
+            </label>
 
             <div style="display: flex; gap: 10px; margin-top: 15px;">
                 <button onclick="confirmExportGame()" style="flex: 2;" data-i18n="btnConfirmExport">Baixar HTML</button>
                 <button onclick="closeExportMenu()" style="flex: 1; color: #ff5555; border-color: #ff5555;" data-i18n="btnCancel">Cancelar</button>
-            </div>
-        </div>
-
-        <div id="panel-scenes" class="panel">
-            <h2 data-i18n="btnCreator">Editor de Cenas</h2>
-            <button onclick="enterRoom()" style="margin-bottom: 15px; background: #336600; border-color: #55ff00;" data-i18n="btnNewScene">Nova Cena</button>
-            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
-                <button onclick="triggerSceneImport('room')" style="flex: 1; background: #996633; border-color: #ffaa33; color: #ffaa33;" data-i18n="btnLoadEdit">Editar Cena</button>
-                <button onclick="triggerSceneImport('free_fpv')" style="flex: 1; background: #663399; border-color: #aa77ff; color: #aa77ff;" data-i18n="btnLoadFree">Visualizar Cena</button>
-            </div>
-            <button onclick="showPanel('panel-menu')" style="margin-top: 15px;" data-i18n="btnBack">Voltar</button>
-        </div>
-
-        <div id="panel-prompt" class="panel" style="z-index: 1000;">
-            <h2 id="prompt-title">Aviso</h2>
-            <input type="text" id="prompt-val" placeholder="...">
-            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                <button onclick="submitCustomPrompt()" style="flex: 2;">OK</button>
-                <button onclick="closeCustomPrompt()" style="flex: 1; color: #ff5555; border-color: #ff5555;" data-i18n="btnCancel">Cancelar</button>
             </div>
         </div>
 
@@ -397,50 +327,45 @@
         let currentSceneData = [];
         let currentLang = 'pt';
         
-        let userIP = 'unknown';
-        fetch('https://api.ipify.org?format=json')
-            .then(r => r.json())
-            .then(d => { userIP = d.ip; })
-            .catch(e => console.log('Could not fetch IP', e));
-            
-        let isAdmin = false;
-        function adminLogin() {
-            const pwd = prompt(currentLang === 'en' ? "Admin Password:" : "Senha de Administrador:");
-            if (pwd === "admin123") {
-                isAdmin = true;
-                alert(currentLang === 'en' ? "Admin mode activated." : "Modo administrador ativado.");
-                if (document.getElementById('panel-gallery').classList.contains('active')) {
-                    renderGalleryList();
-                }
-            } else if (pwd !== null) {
-                alert(currentLang === 'en' ? "Incorrect password." : "Senha incorreta.");
+        let undoStack = [];
+        let redoStack = [];
+
+        function pushUndoState() {
+            undoStack.push(JSON.stringify(currentSceneData));
+            if (undoStack.length > 20) undoStack.shift();
+            redoStack = [];
+            autosaveScene();
+        }
+
+        function autosaveScene() {
+            localStorage.setItem('autosave_scene', JSON.stringify(currentSceneData));
+        }
+
+        function undo() {
+            if (undoStack.length > 0) {
+                redoStack.push(JSON.stringify(currentSceneData));
+                const prevState = undoStack.pop();
+                loadSceneIntoMode(JSON.parse(prevState), currentMode, true);
             }
         }
 
-        async function deleteGalleryItem(id, event) {
-            if (event) event.stopPropagation();
-            if (!isAdmin) return;
-            if (confirm(currentLang === 'en' ? "Are you sure you want to delete this from the public gallery?" : "Tem certeza que deseja apagar isso da galeria pública?")) {
-                try {
-                    await galleryDb.collection('gallery_objects').doc(id).delete();
-                    alert("Deleted!");
-                    fetchGallery(true);
-                } catch(e) {
-                    alert("Error: " + e.message);
-                }
+        function redo() {
+            if (redoStack.length > 0) {
+                undoStack.push(JSON.stringify(currentSceneData));
+                const nextState = redoStack.pop();
+                loadSceneIntoMode(JSON.parse(nextState), currentMode, true);
             }
         }
         
         const i18n = {
             pt: {
-                title: "DREAM ENGINE",
+                title: "GERADOR VOXEL ASCII 3D",
                 btnCreate: "Criar Novo",
                 btnImport: "Importar Objeto",
                 btnMyObjs: "Meus Objetos",
-                btnCreator: "Editor de Cenas",
-                btnNewScene: "Nova Cena",
+                btnCreator: "Entrar (Modo Criador)",
                 btnLoadEdit: "Editar Cena",
-                btnLoadFree: "Visualizar Cena",
+                btnLoadFree: "Carregar (Free)",
                 btnApi: "Configurar API Key (Gemini)",
                 btnBack: "Voltar",
                 btnSpawn: "Spawnar",
@@ -458,92 +383,16 @@
                 exportNameLabel: "Título do Jogo:",
                 exportInstLabel: "Instruções do Jogo:",
                 btnConfirmExport: "Baixar HTML",
-                btnCancel: "Cancelar",
-                searchPlaceholder: "Buscar / Search...",
-                sortDateDesc: "Mais Recentes",
-                sortDateAsc: "Mais Antigos",
-                sortNameAsc: "Nome (A-Z)",
-                sortNameDesc: "Nome (Z-A)",
-                sortLastUsed: "Vistos Recentes",
-                filterAll: "Todos",
-                filterFav: "⭐ Favoritos",
-                viewList: "[ Lista ]",
-                viewGrid: "[ Grade ]",
-                emptyGallery: "Nenhum objeto encontrado.",
-                filterByTag: "Filtrar por Tag:",
-                btnRename: "Renomear",
-                btnTags: "Tags",
-                btnDup: "+Cópia",
-                promptRename: "Novo nome:",
-                promptTags: "Tags (separadas por vírgula):",
-                promptDelete: "Tem certeza que deseja deletar este objeto?",
-                promptNameNewObj: "Nome do novo objeto:",
-                apiConfigTitle: "Configuração da API",
-                apiConfigCreator: "Nome de Criador (Galeria):",
-                creatorNamePlaceholder: "Seu Nome / Your Name",
-                userUnknown: "usuário desconhecido",
-                apiConfigDesc: "Insira sua Gemini API Key. Ela ficará salva com segurança apenas no armazenamento local (localStorage) do seu navegador.",
-                btnSaveKey: "Salvar Chave",
-                btnDelKey: "Deletar Chave",
-                createModTitle: "Criar Novo Objeto",
-                chooseModel: "Escolha o modelo de IA que deseja usar:",
-                baseFileOptional: "Arquivo Base (Opcional - modificar objeto existente):",
-                describePrompt: "Descreva o que deseja criar/modificar no objeto:",
-                promptPlaceholder: "Ex: Uma espada mágica brilhante...",
-                btnGenView: "Gerar e Visualizar",
-                loadingMsg: "[ GERANDO VIA IA... POR FAVOR AGUARDE ]",
-                btnCancelBack: "Cancelar e Voltar",
-                spawnMenuTitle: "Escolha um objeto para spawnar",
-                alertKeySaved: "Chave salva com sucesso!",
-                alertKeyDeleted: "Chave apagada do armazenamento local!",
-                alertImportScene: "Isto parece ser uma Cena (vários objetos em posições), use o botão 'Carregar Cena' no menu principal.",
-                alertImportSuccess: "Objeto importado com sucesso!",
-                alertImportError: "Erro ao importar o arquivo. Verifique o formato.",
-                alertSceneEmpty: "A cena está vazia!",
-                alertSceneInvalid: "Arquivo de cena inválido.",
-                alertSceneReadError: "Erro ao ler o arquivo.",
-                alertNoApiKey: "Por favor, configure sua chave de API Gemini primeiro!",
-                alertGenError: "Erro ao gerar objeto: ",
-                alertCodeError: "Este objeto gerou um código com erro.",
-                emptySpawnList: "Nenhum objeto criado. Crie um no Menu Principal primeiro.",
-                exportTargetScene: "Exportando: Cena Inteira",
-                exportTargetObj: "Exportando Objeto:",
-                exportRenderMode: "Modo Gráfico Inicial:",
-                exportControlMode: "Modo de Controle:",
-                exportShowFloor: "Mostrar Chão",
-                ctrlOrbit: "Órbita (Mouse para girar)",
-                ctrlFpvFree: "1ª Pessoa (Livre)",
-                ctrlFpvRoom: "1ª Pessoa (Preso no Quarto)",
-                instOrbitExport: "Mouse: Clicar+Arrastar rot | Scroll: Zoom | V: Res | M: Modo",
-                instFpvExport: "WASD: Mover | Mouse: Olhar | Q/E: Cima/Baixo | V: Res | M: Modo",
-                btnGallery: "🌐 Galeria Online",
-                galleryTitle: "🌐 Galeria Online (Comunidade)",
-                galleryConfigMissing: "A galeria online precisa ser configurada (Firebase) pelo dono deste site.",
-                gallerySearchPlaceholder: "Buscar por nome/autor...",
-                gallerySortRecent: "Mais Recentes",
-                gallerySortLikes: "Mais Curtidos",
-                btnLoadMore: "Carregar Mais",
-                galleryLoading: "Carregando galeria...",
-                galleryEmpty: "Nenhuma criação encontrada.",
-                btnUpload: "☁ Enviar",
-                uploadPromptName: "Seu nome (aparecerá na galeria):",
-                uploadSuccess: "Sucesso!",
-                uploadDupError: "Esta criação (ou uma idêntica) já está na galeria!",
-                uploadInvalidError: "Este objeto não parece ser uma criação válida do gerador.",
-                uploadGenericError: "Erro: ",
-                btnLike: "❤ Curtir",
-                btnImportGallery: "Importar",
-                btnViewGallery: "Ver"
+                btnCancel: "Cancelar"
             },
             en: {
-                title: "DREAM ENGINE",
+                title: "3D ASCII VOXEL GENERATOR",
                 btnCreate: "Create New",
                 btnImport: "Import Object",
                 btnMyObjs: "My Objects",
-                btnCreator: "Scene Editor",
-                btnNewScene: "New Scene",
+                btnCreator: "Enter (Creator Mode)",
                 btnLoadEdit: "Edit Scene",
-                btnLoadFree: "View Scene",
+                btnLoadFree: "Load (Free)",
                 btnApi: "Setup API Key (Gemini)",
                 btnBack: "Back",
                 btnSpawn: "Spawn",
@@ -561,92 +410,16 @@
                 exportNameLabel: "Game Title:",
                 exportInstLabel: "Game Instructions:",
                 btnConfirmExport: "Download HTML",
-                btnCancel: "Cancel",
-                searchPlaceholder: "Search...",
-                sortDateDesc: "Newest",
-                sortDateAsc: "Oldest",
-                sortNameAsc: "Name (A-Z)",
-                sortNameDesc: "Name (Z-A)",
-                sortLastUsed: "Recently Used",
-                filterAll: "All",
-                filterFav: "⭐ Favorites",
-                viewList: "[ List ]",
-                viewGrid: "[ Grid ]",
-                emptyGallery: "No objects found.",
-                filterByTag: "Filter by Tag:",
-                btnRename: "Rename",
-                btnTags: "Tags",
-                btnDup: "+Copy",
-                promptRename: "New name:",
-                promptTags: "Tags (comma separated):",
-                promptDelete: "Are you sure you want to delete this object?",
-                promptNameNewObj: "New object name:",
-                apiConfigTitle: "API Configuration",
-                apiConfigCreator: "Creator Name (Gallery):",
-                creatorNamePlaceholder: "Your Name",
-                userUnknown: "user unknown",
-                apiConfigDesc: "Enter your Gemini API Key. It will be securely saved only in your browser's local storage.",
-                btnSaveKey: "Save Key",
-                btnDelKey: "Delete Key",
-                createModTitle: "Create New Object",
-                chooseModel: "Choose the AI model you want to use:",
-                baseFileOptional: "Base File (Optional - modify existing object):",
-                describePrompt: "Describe what you want to create/modify in the object:",
-                promptPlaceholder: "Ex: A glowing magic sword...",
-                btnGenView: "Generate and View",
-                loadingMsg: "[ GENERATING VIA AI... PLEASE WAIT ]",
-                btnCancelBack: "Cancel and Back",
-                spawnMenuTitle: "Choose an object to spawn",
-                alertKeySaved: "Key saved successfully!",
-                alertKeyDeleted: "Key deleted from local storage!",
-                alertImportScene: "This looks like a Scene (multiple objects in positions), use the 'Load Scene' button in the main menu.",
-                alertImportSuccess: "Object imported successfully!",
-                alertImportError: "Error importing the file. Check the format.",
-                alertSceneEmpty: "The scene is empty!",
-                alertSceneInvalid: "Invalid scene file.",
-                alertSceneReadError: "Error reading the file.",
-                alertNoApiKey: "Please setup your Gemini API Key first!",
-                alertGenError: "Error generating object: ",
-                alertCodeError: "This object generated code with errors.",
-                emptySpawnList: "No objects created. Create one in the Main Menu first.",
-                exportTargetScene: "Exporting: Entire Scene",
-                exportTargetObj: "Exporting Object:",
-                exportRenderMode: "Initial Graphic Mode:",
-                exportControlMode: "Control Mode:",
-                exportShowFloor: "Show Floor",
-                ctrlOrbit: "Orbit (Mouse to rotate)",
-                ctrlFpvFree: "1st Person (Free)",
-                ctrlFpvRoom: "1st Person (Room Bounded)",
-                instOrbitExport: "Mouse: Click+Drag rot | Scroll: Zoom | V: Res | M: Mode",
-                instFpvExport: "WASD: Move | Mouse: Look | Q/E: Up/Down | V: Res | M: Mode",
-                btnGallery: "🌐 Online Gallery",
-                galleryTitle: "🌐 Online Gallery (Community)",
-                galleryConfigMissing: "The online gallery needs to be configured (Firebase) by this site's owner.",
-                gallerySearchPlaceholder: "Search by name/author...",
-                gallerySortRecent: "Most Recent",
-                gallerySortLikes: "Most Liked",
-                btnLoadMore: "Load More",
-                galleryLoading: "Loading gallery...",
-                galleryEmpty: "No creations found.",
-                btnUpload: "☁ Upload",
-                uploadPromptName: "Your name (will appear in the gallery):",
-                uploadSuccess: "Success!",
-                uploadDupError: "This creation (or an identical one) is already in the gallery!",
-                uploadInvalidError: "This object doesn't look like a valid generator creation.",
-                uploadGenericError: "Error: ",
-                btnLike: "❤ Like",
-                btnImportGallery: "Import",
-                btnViewGallery: "View"
+                btnCancel: "Cancel"
             },
             es: {
-                title: "DREAM ENGINE",
+                title: "GENERADOR VOXEL ASCII 3D",
                 btnCreate: "Crear Nuevo",
                 btnImport: "Importar Objeto",
                 btnMyObjs: "Mis Objetos",
-                btnCreator: "Editor de Escenas",
-                btnNewScene: "Nueva Escena",
+                btnCreator: "Entrar (Modo Creador)",
                 btnLoadEdit: "Editar Escena",
-                btnLoadFree: "Ver Escena",
+                btnLoadFree: "Cargar (Libre)",
                 btnApi: "Configurar API Key (Gemini)",
                 btnBack: "Volver",
                 btnSpawn: "Spawnear",
@@ -664,92 +437,16 @@
                 exportNameLabel: "Título del Juego:",
                 exportInstLabel: "Instrucciones del Juego:",
                 btnConfirmExport: "Descargar HTML",
-                btnCancel: "Cancelar",
-                searchPlaceholder: "Buscar...",
-                sortDateDesc: "Más Recientes",
-                sortDateAsc: "Más Antiguos",
-                sortNameAsc: "Nombre (A-Z)",
-                sortNameDesc: "Nombre (Z-A)",
-                sortLastUsed: "Vistos Recientes",
-                filterAll: "Todos",
-                filterFav: "⭐ Favoritos",
-                viewList: "[ Lista ]",
-                viewGrid: "[ Cuadrícula ]",
-                emptyGallery: "No se encontraron objetos.",
-                filterByTag: "Filtrar por Etiqueta:",
-                btnRename: "Renombrar",
-                btnTags: "Etiquetas",
-                btnDup: "+Copia",
-                promptRename: "Nuevo nombre:",
-                promptTags: "Etiquetas (separadas por comas):",
-                promptDelete: "¿Estás seguro de que quieres eliminar este objeto?",
-                promptNameNewObj: "Nombre del nuevo objeto:",
-                apiConfigTitle: "Configuración de API",
-                apiConfigCreator: "Nombre de Creador (Galería):",
-                creatorNamePlaceholder: "Tu Nombre",
-                userUnknown: "usuario desconocido",
-                apiConfigDesc: "Ingresa tu Gemini API Key. Se guardará de forma segura solo en el almacenamiento local de tu navegador.",
-                btnSaveKey: "Guardar Clave",
-                btnDelKey: "Eliminar Clave",
-                createModTitle: "Crear Nuevo Objeto",
-                chooseModel: "Elige el modelo de IA que quieres usar:",
-                baseFileOptional: "Archivo Base (Opcional - modificar objeto existente):",
-                describePrompt: "Describe lo que quieres crear/modificar en el objeto:",
-                promptPlaceholder: "Ej: Una espada mágica brillante...",
-                btnGenView: "Generar y Ver",
-                loadingMsg: "[ GENERANDO VÍA IA... POR FAVOR ESPERA ]",
-                btnCancelBack: "Cancelar y Volver",
-                spawnMenuTitle: "Elige un objeto para spawnear",
-                alertKeySaved: "¡Clave guardada con éxito!",
-                alertKeyDeleted: "¡Clave eliminada del almacenamiento local!",
-                alertImportScene: "Esto parece ser una Escena (múltiples objetos en posiciones), usa el botón 'Cargar Escena' en el menú principal.",
-                alertImportSuccess: "¡Objeto importado con éxito!",
-                alertImportError: "Error al importar el archivo. Verifica el formato.",
-                alertSceneEmpty: "¡La escena está vacía!",
-                alertSceneInvalid: "Archivo de escena inválido.",
-                alertSceneReadError: "Error al leer el archivo.",
-                alertNoApiKey: "¡Por favor, configura tu API Key de Gemini primero!",
-                alertGenError: "Error al generar el objeto: ",
-                alertCodeError: "Este objeto generó código con errores.",
-                emptySpawnList: "No se han creado objetos. Crea uno en el Menú Principal primero.",
-                exportTargetScene: "Exportando: Escena Entera",
-                exportTargetObj: "Exportando Objeto:",
-                exportRenderMode: "Modo Gráfico Inicial:",
-                exportControlMode: "Modo de Control:",
-                exportShowFloor: "Mostrar Piso",
-                ctrlOrbit: "Órbita (Ratón para rotar)",
-                ctrlFpvFree: "1ª Persona (Libre)",
-                ctrlFpvRoom: "1ª Persona (En Habitación)",
-                instOrbitExport: "Ratón: Clic+Arrastrar rot | Scroll: Zoom | V: Res | M: Modo",
-                instFpvExport: "WASD: Mover | Ratón: Mirar | Q/E: Arriba/Abajo | V: Res | M: Modo",
-                btnGallery: "🌐 Galería Online",
-                galleryTitle: "🌐 Galería Online (Comunidad)",
-                galleryConfigMissing: "La galería online necesita ser configurada (Firebase) por el dueño de este sitio.",
-                gallerySearchPlaceholder: "Buscar por nombre/autor...",
-                gallerySortRecent: "Más Recientes",
-                gallerySortLikes: "Más Gustados",
-                btnLoadMore: "Cargar Más",
-                galleryLoading: "Cargando galería...",
-                galleryEmpty: "No se encontraron creaciones.",
-                btnUpload: "☁ Subir",
-                uploadPromptName: "Tu nombre (aparecerá en la galería):",
-                uploadSuccess: "¡Éxito!",
-                uploadDupError: "¡Esta creación (o una idéntica) ya está en la galería!",
-                uploadInvalidError: "Este objeto no parece ser una creación válida del generador.",
-                uploadGenericError: "Error: ",
-                btnLike: "❤ Me gusta",
-                btnImportGallery: "Importar",
-                btnViewGallery: "Ver"
+                btnCancel: "Cancelar"
             },
             ja: {
-                title: "DREAM ENGINE",
+                title: "3D ASCII ボクセル ジェネレーター",
                 btnCreate: "新規作成",
                 btnImport: "インポート",
                 btnMyObjs: "マイオブジェクト",
-                btnCreator: "シーンエディター",
-                btnNewScene: "新しいシーン",
+                btnCreator: "入る (クリエイターモード)",
                 btnLoadEdit: "シーン編集",
-                btnLoadFree: "シーンを見る",
+                btnLoadFree: "読み込む (フリー)",
                 btnApi: "APIキー設定 (Gemini)",
                 btnBack: "戻る",
                 btnSpawn: "スポーン",
@@ -767,82 +464,7 @@
                 exportNameLabel: "ゲームのタイトル:",
                 exportInstLabel: "ゲームの説明:",
                 btnConfirmExport: "HTMLをダウンロード",
-                btnCancel: "キャンセル",
-                searchPlaceholder: "検索...",
-                sortDateDesc: "新しい順",
-                sortDateAsc: "古い順",
-                sortNameAsc: "名前 (A-Z)",
-                sortNameDesc: "名前 (Z-A)",
-                sortLastUsed: "最近使った項目",
-                filterAll: "すべて",
-                filterFav: "⭐ お気に入り",
-                viewList: "[ リスト ]",
-                viewGrid: "[ グリッド ]",
-                emptyGallery: "オブジェクトが見つかりません。",
-                filterByTag: "タグで絞り込み:",
-                btnRename: "名前変更",
-                btnTags: "タグ",
-                btnDup: "+コピー",
-                promptRename: "新しい名前:",
-                promptTags: "タグ (カンマ区切り):",
-                promptDelete: "このオブジェクトを削除してもよろしいですか？",
-                promptNameNewObj: "新しいオブジェクト名:",
-                apiConfigTitle: "API設定",
-                apiConfigCreator: "クリエイター名（ギャラリー）:",
-                creatorNamePlaceholder: "あなたの名前",
-                userUnknown: "不明なユーザー",
-                apiConfigDesc: "Gemini APIキーを入力してください。ブラウザのローカルストレージにのみ安全に保存されます。",
-                btnSaveKey: "キーを保存",
-                btnDelKey: "キーを削除",
-                createModTitle: "新規オブジェクト作成",
-                chooseModel: "使用するAIモデルを選択してください:",
-                baseFileOptional: "ベースファイル (オプション - 既存のオブジェクトを変更):",
-                describePrompt: "オブジェクトで作成/変更したい内容を説明してください:",
-                promptPlaceholder: "例: 光る魔法の剣...",
-                btnGenView: "生成して表示",
-                loadingMsg: "[ AIで生成中... しばらくお待ちください ]",
-                btnCancelBack: "キャンセルして戻る",
-                spawnMenuTitle: "スポーンするオブジェクトを選択",
-                alertKeySaved: "キーが正常に保存されました！",
-                alertKeyDeleted: "ローカルストレージからキーを削除しました！",
-                alertImportScene: "これはシーン（複数のオブジェクトが配置された状態）のようです。メインメニューの「シーン読み込み」ボタンを使用してください。",
-                alertImportSuccess: "オブジェクトのインポートに成功しました！",
-                alertImportError: "ファイルのインポート中にエラーが発生しました。フォーマットを確認してください。",
-                alertSceneEmpty: "シーンが空です！",
-                alertSceneInvalid: "無効なシーンファイルです。",
-                alertSceneReadError: "ファイルの読み込み中にエラーが発生しました。",
-                alertNoApiKey: "まずGemini APIキーを設定してください！",
-                alertGenError: "オブジェクトの生成中にエラーが発生しました: ",
-                alertCodeError: "このオブジェクトはエラーを含むコードを生成しました。",
-                emptySpawnList: "オブジェクトが作成されていません。まずメインメニューで作成してください。",
-                exportTargetScene: "出力: シーン全体",
-                exportTargetObj: "オブジェクト出力:",
-                exportRenderMode: "初期グラフィックモード:",
-                exportControlMode: "コントロールモード:",
-                exportShowFloor: "床を表示",
-                ctrlOrbit: "オービット（マウスで回転）",
-                ctrlFpvFree: "1人称（フリー）",
-                ctrlFpvRoom: "1人称（部屋に固定）",
-                instOrbitExport: "マウス: ドラッグで回転 | スクロール: ズーム | V: 解像度 | M: モード",
-                instFpvExport: "WASD: 移動 | マウス: 視点 | Q/E: 上下 | V: 解像度 | M: モード",
-                btnGallery: "🌐 オンラインギャラリー",
-                galleryTitle: "🌐 オンラインギャラリー（コミュニティ）",
-                galleryConfigMissing: "オンラインギャラリーはこのサイトの運営者がFirebaseの設定を行う必要があります。",
-                gallerySearchPlaceholder: "名前・作者で検索...",
-                gallerySortRecent: "新着順",
-                gallerySortLikes: "人気順",
-                btnLoadMore: "もっと読み込む",
-                galleryLoading: "ギャラリーを読み込み中...",
-                galleryEmpty: "作品が見つかりません。",
-                btnUpload: "☁ アップロード",
-                uploadPromptName: "あなたの名前（ギャラリーに表示されます）:",
-                uploadSuccess: "成功しました！",
-                uploadDupError: "この作品（または同一のもの）は既にギャラリーにあります！",
-                uploadInvalidError: "この作品はジェネレーターの有効な作品ではないようです。",
-                uploadGenericError: "エラー: ",
-                btnLike: "❤ いいね",
-                btnImportGallery: "インポート",
-                btnViewGallery: "表示"
+                btnCancel: "キャンセル"
             }
         };
 
@@ -851,38 +473,12 @@
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 if (i18n[lang] && i18n[lang][key]) {
-                    if (el.tagName === 'INPUT' && el.type === 'text') {
-                        el.placeholder = i18n[lang][key];
-                    } else {
-                        el.innerText = i18n[lang][key];
-                    }
+                    el.innerText = i18n[lang][key];
                 }
             });
             setResolution(currentResLevel);
             if (typeof cycleRenderMode === 'function') cycleRenderMode(true);
             updateHUDText();
-            if (document.getElementById('panel-objects').classList.contains('active')) {
-                renderObjectsList();
-                updateStaticGalleryTexts();
-            }
-        }
-        
-        function updateStaticGalleryTexts() {
-            document.getElementById('view-mode-btn').innerText = objViewMode === 'list' ? i18n[currentLang].viewList : i18n[currentLang].viewGrid;
-            
-            const sortSelect = document.getElementById('obj-sort');
-            if (sortSelect && sortSelect.options.length > 0) {
-                sortSelect.options[0].text = i18n[currentLang].sortDateDesc;
-                sortSelect.options[1].text = i18n[currentLang].sortDateAsc;
-                sortSelect.options[2].text = i18n[currentLang].sortNameAsc;
-                sortSelect.options[3].text = i18n[currentLang].sortLastUsed;
-            }
-            
-            const filterSelect = document.getElementById('obj-filter');
-            if (filterSelect && filterSelect.options.length > 0) {
-                filterSelect.options[0].text = i18n[currentLang].filterAll;
-                filterSelect.options[1].text = i18n[currentLang].filterFav;
-            }
         }
         
         function updateHUDText() {
@@ -911,253 +507,9 @@ O código deve ser auto-contido.
 Use 'var' em vez de 'const' ou 'let' no nível mais alto se precisar, ou coloque o código dentro de um bloco de função anônima auto-executável '(() => { ... })();' para evitar erros de redeclaração.
 O código deve criar um 'THREE.Group' contendo vários 'THREE.Mesh' com 'THREE.BoxGeometry' e 'THREE.MeshStandardMaterial' que representam o objeto descrito pelo usuário.
 Após criar o grupo e os meshes (que devem ser coloridos), adicione-os à 'window.scene' na posição (0, 0, 0).
-Retorne APENAS o código JavaScript. NÃO use marcação markdown (como 'javascript').
+Retorne APENAS o código JavaScript. NÃO use marcação markdown (como \`\`\`javascript).
 Comece imediatamente com o código (por exemplo: '(() => { const objectGroup = new THREE.Group(); ... window.scene.add(objectGroup); })();').
 Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e não se esqueça de ativar 'castShadow = true' e 'receiveShadow = true' nos meshes.`;
-
-        // ==========================================
-        // ONLINE GALLERY (FIREBASE FIRESTORE)
-        // ==========================================
-
-        const firebaseConfig = {
-             apiKey: "AIzaSyAnXII96RwOSs7p-cdvmch7_S3A2-rcLEc",
-  authDomain: "project-engine-2f962.firebaseapp.com",
-  projectId: "project-engine-2f962",
-  storageBucket: "project-engine-2f962.firebasestorage.app",
-  messagingSenderId: "17396805461",
-  appId: "1:17396805461:web:11463e56e27a760eaec9dc",
-  measurementId: "G-EDTS1HS7T8"
-        };
-
-        let galleryDb = null;
-        let galleryEnabled = false;
-        try {
-            if (firebaseConfig.apiKey && firebaseConfig.apiKey.indexOf("COLE_SUA") === -1 && typeof firebase !== 'undefined') {
-                firebase.initializeApp(firebaseConfig);
-                galleryDb = firebase.firestore();
-                galleryEnabled = true;
-            }
-        } catch(e) {
-            console.warn("Galeria online não configurada:", e);
-            galleryEnabled = false;
-        }
-
-        let galleryItems = [];
-        let galleryLastDoc = null;
-        let galleryLoadingFlag = false;
-        const GALLERY_PAGE_SIZE = 20;
-
-        async function sha256Hex(str) {
-            const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-            return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
-        }
-
-        function isValidCreationCode(code) {
-            if (!code || typeof code !== 'string') return false;
-            if (code.length < 10 || code.length > 500000) return false;
-            return true;
-        }
-
-        function promptUploadToGallery(index, event) {
-            if (event) event.stopPropagation();
-            if (!galleryEnabled) {
-                alert(i18n[currentLang].galleryConfigMissing);
-                return;
-            }
-            const obj = voxelObjects[index];
-            if (!isValidCreationCode(obj.code)) {
-                alert(i18n[currentLang].uploadInvalidError);
-                return;
-            }
-            
-            showCustomPrompt(i18n[currentLang].promptNameNewObj || "Nome do objeto:", obj.name, function(objName) {
-                if (!objName || !objName.trim()) return;
-                
-                let savedAuthor = localStorage.getItem('voxel_author_name');
-                if (!savedAuthor || !savedAuthor.trim()) {
-                    savedAuthor = i18n[currentLang].userUnknown || 'user unknown';
-                }
-                
-                doUploadToGallery(obj, savedAuthor.trim(), objName.trim());
-            });
-        }
-
-        async function doUploadToGallery(obj, authorName, objName) {
-            try {
-                const hash = await sha256Hex(obj.code);
-
-                const existing = await galleryDb.collection('gallery_objects').where('hash', '==', hash).limit(1).get();
-                if (!existing.empty) {
-                    alert(i18n[currentLang].uploadDupError);
-                    return;
-                }
-
-                const docData = {
-                    name: (objName || 'Sem nome').substring(0, 60),
-                    author: authorName.substring(0, 40),
-                    code: obj.code,
-                    hash: hash,
-                    thumbnail: obj.thumbnail || "",
-                    createdAt: Date.now(),
-                    likes: 0,
-                    likedIPs: [],
-                    tags: (obj.tags && Array.isArray(obj.tags)) ? obj.tags.map(t => String(t).substring(0, 20)).slice(0, 10) : []
-                };
-
-                await galleryDb.collection('gallery_objects').add(docData);
-
-                alert(i18n[currentLang].uploadSuccess);
-            } catch(e) {
-                console.error("Erro no upload:", e);
-                alert(i18n[currentLang].uploadGenericError + e.message);
-            }
-        }
-
-        async function fetchGallery(reset) {
-            if (!galleryEnabled) {
-                document.getElementById('gallery-config-warning').style.display = 'block';
-                return;
-            }
-            if (galleryLoadingFlag) return;
-            galleryLoadingFlag = true;
-
-            if (reset) {
-                galleryItems = [];
-                galleryLastDoc = null;
-                document.getElementById('gallery-list').innerHTML = `<p style="text-align:center; color:#0af;">${i18n[currentLang].galleryLoading}</p>`;
-            }
-
-            const sortSelect = document.getElementById('gallery-sort');
-            const sortMode = sortSelect ? sortSelect.value : 'recent';
-            const orderField = sortMode === 'likes' ? 'likes' : 'createdAt';
-
-            try {
-                let query = galleryDb.collection('gallery_objects').orderBy(orderField, 'desc').limit(GALLERY_PAGE_SIZE);
-                if (galleryLastDoc) query = query.startAfter(galleryLastDoc);
-
-                const snap = await query.get();
-                snap.forEach(doc => {
-                    galleryItems.push({ id: doc.id, ...doc.data() });
-                });
-                if (snap.docs.length > 0) {
-                    galleryLastDoc = snap.docs[snap.docs.length - 1];
-                }
-                document.getElementById('gallery-loadmore-btn').style.display = snap.docs.length === GALLERY_PAGE_SIZE ? 'block' : 'none';
-                renderGalleryList();
-            } catch(e) {
-                console.error("Erro ao buscar galeria:", e);
-                document.getElementById('gallery-list').innerHTML = `<p style="text-align:center; color:#f55;">${i18n[currentLang].uploadGenericError}${e.message}</p>`;
-            } finally {
-                galleryLoadingFlag = false;
-            }
-        }
-
-        function renderGalleryList() {
-            const listDiv = document.getElementById('gallery-list');
-            if (!listDiv) return;
-            const searchInput = document.getElementById('gallery-search');
-            const q = searchInput ? searchInput.value.toLowerCase() : '';
-
-            const filtered = galleryItems.filter(it =>
-                !q || (it.name || '').toLowerCase().includes(q) || (it.author || '').toLowerCase().includes(q) || (it.tags && it.tags.join(' ').toLowerCase().includes(q))
-            );
-
-            listDiv.innerHTML = '';
-            if (filtered.length === 0) {
-                listDiv.innerHTML = `<p style="text-align:center; color:#555;">${i18n[currentLang].galleryEmpty}</p>`;
-                return;
-            }
-
-            filtered.forEach(it => {
-                const item = document.createElement('div');
-                item.className = 'list-item';
-                const thumbHtml = it.thumbnail ? `<pre style="font-size:3px; line-height:3px; overflow:hidden; opacity:0.8; margin:0; font-family: monospace;">${it.thumbnail}</pre>` : '';
-                
-                const tagsHtml = (it.tags || []).map(t => `<span style="background:#0f0; color:#000; font-size:9px; padding:2px 4px; border-radius:3px; display:inline-block; margin-left:5px;">${t}</span>`).join('');
-                
-                item.innerHTML = `
-                    <div style="display:flex; align-items:center; flex-grow:1; overflow:hidden; gap:10px;">
-                        ${thumbHtml ? `<div style="width:50px; height:40px; overflow:hidden; border:1px solid #0f0; flex-shrink:0; background:rgba(0,20,0,0.8);">${thumbHtml}</div>` : ''}
-                        <div style="overflow:hidden; flex-grow:1;">
-                            <div class="list-item-title" style="white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${it.name}</div>
-                            <div style="font-size:11px; color:#0af;">@${it.author || '?'} · ❤ ${it.likes || 0}</div>
-                        </div>
-                        <div style="display:flex; flex-wrap:wrap; gap:5px; margin-right:10px; flex-shrink:0; align-items:center;">
-                            ${tagsHtml}
-                        </div>
-                    </div>
-                    <div style="display:flex; gap:5px; flex-wrap:wrap; flex-shrink:0;">
-                        <button onclick="viewGalleryItem('${it.id}')" style="padding:5px 10px; background:#222; border:1px solid #555;">${i18n[currentLang].btnViewGallery}</button>
-                        <button onclick="importGalleryItem('${it.id}')" style="padding:5px 10px; background:#336600; border-color:#55ff00; color:#55ff00;">${i18n[currentLang].btnImportGallery}</button>
-                        <button onclick="likeGalleryItem('${it.id}', event)" style="padding:5px 10px; background:#440022; border-color:#ff5599; color:#ff5599;">${i18n[currentLang].btnLike}</button>
-                        ${isAdmin ? `<button onclick="deleteGalleryItem('${it.id}', event)" style="padding:5px 10px; background:#550000; border-color:#ff0000; color:#ff0000;">🗑️</button>` : ''}
-                    </div>
-                `;
-                listDiv.appendChild(item);
-            });
-        }
-
-        function viewGalleryItem(id) {
-            const it = galleryItems.find(g => g.id === id);
-            if (!it) return;
-            enterSimpleView(null, it.code);
-        }
-
-        function importGalleryItem(id) {
-            const it = galleryItems.find(g => g.id === id);
-            if (!it) return;
-            voxelObjects.unshift({
-                name: it.name,
-                code: it.code,
-                id: 'imported_' + Date.now(),
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                lastUsedAt: Date.now(),
-                favorite: false,
-                tags: ['galeria', it.author ? '@' + it.author : ''].filter(Boolean)
-            });
-            localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-            alert(i18n[currentLang].uploadSuccess);
-        }
-
-        async function likeGalleryItem(id, event) {
-            if (event) event.stopPropagation();
-            if (!galleryEnabled) return;
-            
-            const localKey = 'liked_' + id;
-            if (localStorage.getItem(localKey)) {
-                alert(currentLang === 'en' ? "You already liked this!" : "Você já curtiu esta criação!");
-                return;
-            }
-            
-            try {
-                const ref = galleryDb.collection('gallery_objects').doc(id);
-                await galleryDb.runTransaction(async (t) => {
-                    const doc = await t.get(ref);
-                    const data = doc.data();
-                    
-                    const likedIPs = data.likedIPs || [];
-                    if (likedIPs.includes(userIP) && userIP !== 'unknown') {
-                        throw new Error("ALREADY_LIKED_IP");
-                    }
-                    
-                    likedIPs.push(userIP);
-                    t.update(ref, { likes: (data.likes || 0) + 1, likedIPs: likedIPs });
-                });
-                
-                localStorage.setItem(localKey, '1');
-                const it = galleryItems.find(g => g.id === id);
-                if (it) it.likes = (it.likes || 0) + 1;
-                renderGalleryList();
-            } catch(e) {
-                if (e.message === "ALREADY_LIKED_IP") {
-                    alert(currentLang === 'en' ? "This IP already liked this creation!" : "Este IP já curtiu esta criação!");
-                } else {
-                    console.error("Erro ao curtir:", e);
-                    alert("Could not register like on server. It might be due to strict database rules.");
-                }
-            }
-        }
 
         // ==========================================
         // UI NAVIGATION & API KEY MANAGEMENT
@@ -1166,277 +518,64 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
             if(panelId) {
                 document.getElementById(panelId).classList.add('active');
+                document.getElementById('ui-layer').style.pointerEvents = 'auto';
+            } else {
+                document.getElementById('ui-layer').style.pointerEvents = 'none';
             }
             if(panelId === 'panel-objects') {
                 renderObjectsList();
             }
-            if(panelId === 'panel-gallery') {
-                if (!galleryEnabled) {
-                    document.getElementById('gallery-config-warning').style.display = 'block';
-                } else {
-                    document.getElementById('gallery-config-warning').style.display = 'none';
-                    if (galleryItems.length === 0) fetchGallery(true);
-                    else renderGalleryList();
-                }
-            }
-            const langContainer = document.getElementById('lang-container');
-            if (langContainer) {
-                langContainer.style.display = panelId === 'panel-menu' ? 'block' : 'none';
-            }
         }
 
-        function saveApiAndCreator() {
+        function saveApiKey() {
             const key = document.getElementById('api-key-input').value.trim();
-            const creator = document.getElementById('creator-name-input').value.trim();
-            if(key) localStorage.setItem('gemini_api_key', key);
-            localStorage.setItem('voxel_author_name', creator);
-            alert(i18n[currentLang].alertKeySaved);
-            showPanel('panel-menu');
+            if(key) {
+                localStorage.setItem('gemini_api_key', key);
+                alert("Chave salva com sucesso!");
+                showPanel('panel-menu');
+            }
         }
         
         function deleteApiKey() {
             localStorage.removeItem('gemini_api_key');
             document.getElementById('api-key-input').value = "";
-            alert(i18n[currentLang].alertKeyDeleted);
+            alert("Chave apagada do armazenamento local!");
         }
 
         document.getElementById('api-key-input').value = localStorage.getItem('gemini_api_key') || "";
-        const savedCreator = localStorage.getItem('voxel_author_name') || "";
-        const creatorInput = document.getElementById('creator-name-input');
-        if (creatorInput) creatorInput.value = savedCreator;
-
-        let objViewMode = 'list';
-
-        function migrateObjects() {
-            let changed = false;
-            voxelObjects.forEach((obj, idx) => {
-                if (!obj.id) { obj.id = 'obj_' + Date.now() + '_' + idx; changed = true; }
-                if (!obj.createdAt) { obj.createdAt = Date.now() - idx*1000; changed = true; }
-                if (!obj.updatedAt) { obj.updatedAt = obj.createdAt; changed = true; }
-                if (!obj.lastUsedAt) { obj.lastUsedAt = obj.createdAt; changed = true; }
-                if (obj.favorite === undefined) { obj.favorite = false; changed = true; }
-                if (!obj.tags) { obj.tags = []; changed = true; }
-            });
-            if (changed) localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-        }
-
-        function toggleViewMode() {
-            objViewMode = objViewMode === 'list' ? 'grid' : 'list';
-            document.getElementById('view-mode-btn').innerText = objViewMode === 'list' ? i18n[currentLang].viewList : i18n[currentLang].viewGrid;
-            renderObjectsList();
-        }
-
-        function markUsed(index) {
-            voxelObjects[index].lastUsedAt = Date.now();
-            localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-        }
-
-        function toggleFavorite(index, event) {
-            if (event) event.stopPropagation();
-            voxelObjects[index].favorite = !voxelObjects[index].favorite;
-            localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-            renderObjectsList();
-        }
-
-        let promptCallback = null;
-
-        function showCustomPrompt(title, defaultValue, callback) {
-            document.getElementById('prompt-title').innerText = title;
-            document.getElementById('prompt-val').value = defaultValue || '';
-            promptCallback = callback;
-            showPanel('panel-prompt');
-            setTimeout(() => document.getElementById('prompt-val').focus(), 100);
-        }
-
-        function submitCustomPrompt() {
-            const val = document.getElementById('prompt-val').value;
-            closeCustomPrompt();
-            if (promptCallback) promptCallback(val);
-        }
-
-        function closeCustomPrompt() {
-            document.getElementById('panel-prompt').classList.remove('active');
-            showPanel('panel-objects');
-        }
-
-        function renameObject(index, event) {
-            if (event) event.stopPropagation();
-            showCustomPrompt(i18n[currentLang].promptRename, voxelObjects[index].name, function(newName) {
-                if (newName && newName.trim().length > 0) {
-                    voxelObjects[index].name = newName.trim();
-                    voxelObjects[index].updatedAt = Date.now();
-                    localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-                    renderObjectsList();
-                }
-            });
-        }
-
-        function duplicateObject(index, event) {
-            if (event) event.stopPropagation();
-            const obj = voxelObjects[index];
-            const newObj = JSON.parse(JSON.stringify(obj));
-            newObj.id = 'obj_' + Date.now();
-            newObj.name = obj.name + " (" + i18n[currentLang].btnDup.replace('+', '') + ")";
-            newObj.createdAt = Date.now();
-            newObj.updatedAt = Date.now();
-            newObj.lastUsedAt = Date.now();
-            newObj.favorite = false;
-            voxelObjects.unshift(newObj);
-            localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-            renderObjectsList();
-        }
-
-        function manageTags(index, event) {
-            if (event) event.stopPropagation();
-            const obj = voxelObjects[index];
-            showCustomPrompt(i18n[currentLang].promptTags, (obj.tags || []).join(', '), function(tagsStr) {
-                if (tagsStr !== null) {
-                    obj.tags = tagsStr.split(',').map(t => t.trim()).filter(t => t.length > 0);
-                    obj.updatedAt = Date.now();
-                    localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-                    renderObjectsList();
-                }
-            });
-        }
 
         function renderObjectsList() {
-            migrateObjects();
-
             const listDiv = document.getElementById('objects-list');
-            if(!listDiv) return;
             listDiv.innerHTML = '';
-            
-            const searchInput = document.getElementById('obj-search');
-            const sortSelect = document.getElementById('obj-sort');
-            const filterSelect = document.getElementById('obj-filter');
-            
-            const searchQuery = searchInput ? searchInput.value.toLowerCase() : '';
-            const sortMode = sortSelect ? sortSelect.value : 'dateDesc';
-            const extraFilter = filterSelect ? filterSelect.value : 'all';
-
-            let filtered = voxelObjects.map((obj, i) => ({ obj, index: i })).filter(item => {
-                const o = item.obj;
-                if (searchQuery && !o.name.toLowerCase().includes(searchQuery) && !(o.tags && o.tags.join(' ').toLowerCase().includes(searchQuery))) return false;
-                if (extraFilter === 'favorites' && !o.favorite) return false;
-                return true;
-            });
-
-            filtered.sort((a, b) => {
-                const oa = a.obj;
-                const ob = b.obj;
-                if (sortMode === 'dateDesc') return ob.createdAt - oa.createdAt;
-                if (sortMode === 'dateAsc') return oa.createdAt - ob.createdAt;
-                if (sortMode === 'nameAsc') return oa.name.localeCompare(ob.name);
-                if (sortMode === 'nameDesc') return ob.name.localeCompare(oa.name);
-                if (sortMode === 'lastUsed') return (ob.lastUsedAt || 0) - (oa.lastUsedAt || 0);
-                return 0;
-            });
-
-            if(filtered.length === 0) {
-                listDiv.style.display = 'block';
-                listDiv.innerHTML = `<p style="text-align:center; color:#555;">${i18n[currentLang].emptyGallery}</p>`;
-            } else {
-                if (objViewMode === 'grid') {
-                    listDiv.style.display = 'grid';
-                    listDiv.style.gridTemplateColumns = 'repeat(auto-fill, minmax(180px, 1fr))';
-                    listDiv.style.gap = '15px';
-                } else {
-                    listDiv.style.display = 'flex';
-                    listDiv.style.flexDirection = 'column';
-                    listDiv.style.gap = '10px';
-                }
-                
-                filtered.forEach(({obj, index}) => {
-                    const item = document.createElement('div');
-                    item.className = 'list-item';
-                    
-                    if (objViewMode === 'grid') {
-                        item.style.flexDirection = 'column';
-                        item.style.alignItems = 'stretch';
-                        item.style.position = 'relative';
-                        item.style.height = '200px';
-                        item.style.padding = '5px';
-                        
-                        const tagsHtml = (obj.tags || []).slice(0,2).map(t => `<span style="background:#0f0; color:#000; font-size:9px; padding:2px 4px; border-radius:3px; display:inline-block; margin-right:2px; margin-top:2px;">${t}</span>`).join('');
-                        const thumbHtml = obj.thumbnail ? `<pre style="font-size: 3px; line-height: 3px; overflow: hidden; pointer-events: none; opacity: 0.8; margin: 0; font-family: monospace; text-align: center;">${obj.thumbnail}</pre>` : `<span style="font-size: 30px; opacity: 0.5;">[ OBJ ]</span>`;
-                        
-                        item.innerHTML = `
-                            <div style="position: absolute; top: 5px; right: 5px; cursor: pointer; font-size: 16px; z-index: 10;" onclick="toggleFavorite(${index}, event)">${obj.favorite ? '⭐' : '☆'}</div>
-                            <div style="flex-grow: 1; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,20,0,0.8); margin-bottom: 5px; border: 1px dashed #0f0; cursor: pointer; position: relative; overflow: hidden;" onclick="markUsed(${index}); enterSimpleView(${index})">
-                                ${thumbHtml}
-                                <div style="position: absolute; bottom: 2px; left: 2px;">${tagsHtml}</div>
-                            </div>
-                            <div class="list-item-title" style="text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 14px; margin-bottom: 5px; cursor: text;" onclick="renameObject(${index}, event)" title="${obj.name}">${obj.name}</div>
-                            
-                            <div style="display: flex; gap: 2px; justify-content: center; flex-wrap: wrap;">
-                                <button onclick="manageTags(${index}, event)" title="${i18n[currentLang].btnTags}" style="padding: 2px; font-size: 10px; background: #003366; color: #00aaff; border: 1px solid #00aaff; flex: 1;">#</button>
-                                <button onclick="duplicateObject(${index}, event)" title="${i18n[currentLang].btnDup}" style="padding: 2px; font-size: 10px; background: #003300; color: #00ff00; border: 1px solid #00ff00; flex: 1;">${i18n[currentLang].btnDup}</button>
-                                <button onclick="promptUploadToGallery(${index}, event)" title="${i18n[currentLang].btnUpload}" style="padding: 2px; font-size: 10px; background: #004488; color: #00aaff; border: 1px solid #00aaff; flex: 1;">☁</button>
-                                <button onclick="openExportMenu(${index}, event)" title="HTML" style="padding: 2px; font-size: 10px; background: #996633; color: #ffaa33; border: 1px solid #ffaa33; flex: 1;">HTML</button>
-                                <button onclick="deleteObject(${index})" title="X" style="padding: 2px; font-size: 10px; background: #300; color: #f00; border: 1px solid #f00; flex: 1;">X</button>
-                            </div>
-                        `;
-                    } else {
-                        const tagsHtml = (obj.tags || []).map(t => `<span style="background:#0f0; color:#000; font-size:10px; padding:2px 4px; border-radius:3px; display:inline-block; margin-left:5px;">${t}</span>`).join('');
-                        item.innerHTML = `
-                            <div style="display: flex; align-items: center; flex-grow: 1; overflow: hidden;">
-                                <div style="cursor: pointer; margin-right: 10px; font-size: 18px;" onclick="toggleFavorite(${index}, event)">${obj.favorite ? '⭐' : '☆'}</div>
-                                <div class="list-item-title" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" onclick="markUsed(${index}); enterSimpleView(${index})">${obj.name} ${tagsHtml}</div>
-                            </div>
-                            <div style="display: flex; gap: 5px; flex-wrap: wrap; flex-shrink: 0;">
-                                <button onclick="renameObject(${index}, event)" title="${i18n[currentLang].btnRename}" style="padding: 5px 10px; background: #222; border: 1px solid #555;">${i18n[currentLang].btnRename}</button>
-                                <button onclick="manageTags(${index}, event)" title="${i18n[currentLang].btnTags}" style="padding: 5px 10px; background: #003366; color: #00aaff; border: 1px solid #00aaff;">${i18n[currentLang].btnTags}</button>
-                                <button onclick="duplicateObject(${index}, event)" title="${i18n[currentLang].btnDup}" style="padding: 5px 10px; background: #003300; color: #00ff00; border: 1px solid #00ff00;">${i18n[currentLang].btnDup}</button>
-                                <button onclick="promptUploadToGallery(${index}, event)" title="${i18n[currentLang].btnUpload}" style="padding: 5px 10px; background: #004488; color: #00aaff; border: 1px solid #00aaff;">${i18n[currentLang].btnUpload}</button>
-                                <button onclick="exportObject(${index}, 'json')" title="JSON" style="padding: 5px 10px; background: #003366; color: #00aaff; border: 1px solid #00aaff;">JSON</button>
-                                <button onclick="exportObject(${index}, 'js')" title="JS" style="padding: 5px 10px; background: #333300; color: #ffff00; border: 1px solid #ffff00;">JS</button>
-                                <button onclick="openExportMenu(${index}, event)" title="HTML" style="padding: 5px 10px; background: #996633; color: #ffaa33; border: 1px solid #ffaa33;">HTML</button>
-                                <button onclick="deleteObject(${index})" title="X" style="padding: 5px 10px; background: #300; color: #f00; border: 1px solid #f00;">X</button>
-                            </div>
-                        `;
-                    }
-                    listDiv.appendChild(item);
-                });
+            if(voxelObjects.length === 0) {
+                listDiv.innerHTML = '<p style="text-align:center; color:#555;">Nenhum objeto criado ainda.</p>';
+                return;
             }
             
-            const allTags = new Set();
-            voxelObjects.forEach(o => (o.tags||[]).forEach(t => allTags.add(t)));
-            const tagsContainer = document.getElementById('tags-container');
-            if(tagsContainer) {
-                tagsContainer.innerHTML = '';
-                if (allTags.size > 0) {
-                    tagsContainer.innerHTML = `<span style="color:#aaa; display:flex; align-items:center;">${i18n[currentLang].filterByTag}</span>`;
-                    Array.from(allTags).sort().forEach(tag => {
-                        const tagBtn = document.createElement('button');
-                        tagBtn.innerText = tag;
-                        tagBtn.style.padding = '2px 5px';
-                        tagBtn.style.fontSize = '10px';
-                        if (searchQuery === tag.toLowerCase()) {
-                            tagBtn.style.background = '#0f0';
-                            tagBtn.style.color = '#000';
-                        } else {
-                            tagBtn.style.background = '#002200';
-                        }
-                        tagBtn.onclick = () => {
-                            if (searchInput) {
-                                if (searchInput.value.toLowerCase() === tag.toLowerCase()) searchInput.value = '';
-                                else searchInput.value = tag;
-                                renderObjectsList();
-                            }
-                        };
-                        tagsContainer.appendChild(tagBtn);
-                    });
-                }
-            }
+            voxelObjects.forEach((obj, index) => {
+                const item = document.createElement('div');
+                item.className = 'list-item';
+                item.innerHTML = `
+                    <div class="list-item-title" onclick="enterSimpleView(${index})">${obj.name}</div>
+                    <div style="display: flex; gap: 5px;">
+                        <button onclick="setMenuBG(${index})" title="Usar no Menu" style="padding: 5px 10px; background: #330066; color: #aa00ff; border: 1px solid #aa00ff;">BG</button>
+                        <button onclick="exportObject(${index}, 'json')" title="Exportar (.json)" style="padding: 5px 10px; background: #003366; color: #00aaff; border: 1px solid #00aaff;">JSON</button>
+                        <button onclick="exportObject(${index}, 'js')" title="Exportar (.js bruto)" style="padding: 5px 10px; background: #333300; color: #ffff00; border: 1px solid #ffff00;">JS</button>
+                        <button onclick="deleteObject(${index})" title="Deletar" style="padding: 5px 10px; background: #300; color: #f00; border: 1px solid #f00;">X</button>
+                    </div>
+                `;
+                listDiv.appendChild(item);
+            });
         }
         
         function deleteObject(index) {
-            if(confirm(i18n[currentLang].promptDelete)) {
+            if(confirm("Tem certeza que deseja deletar este objeto?")) {
                 voxelObjects.splice(index, 1);
                 localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
                 renderObjectsList();
             }
         }
+
         // ==========================================
         // IMPORT / EXPORT LOGIC
         // ==========================================
@@ -1454,8 +593,8 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 try {
                     if (file.name.toLowerCase().endsWith('.json')) {
                         const parsedData = JSON.parse(content);
-                        if ((Array.isArray(parsedData) && parsedData.length > 0 && parsedData[0].position) || (parsedData.items && Array.isArray(parsedData.items))) {
-                            alert(i18n[currentLang].alertImportScene);
+                        if (Array.isArray(parsedData) && parsedData.length > 0 && parsedData[0].position) {
+                            alert("Isto parece ser uma Cena (vários objetos em posições), use o botão 'Carregar Cena' no menu principal.");
                             return;
                         } else if (Array.isArray(parsedData)) {
                             voxelObjects.unshift(...parsedData);
@@ -1474,11 +613,11 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                     if(document.getElementById('panel-objects').classList.contains('active')) {
                         renderObjectsList();
                     }
-                    alert(i18n[currentLang].alertImportSuccess);
+                    alert("Objeto importado com sucesso!");
                     
                 } catch(err) {
                     console.error("Erro na importação:", err);
-                    alert(i18n[currentLang].alertImportError);
+                    alert("Erro ao importar o arquivo. Verifique o formato.");
                 }
             };
             reader.readAsText(file);
@@ -1516,20 +655,10 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         // ==========================================
         function saveScene() {
             if (currentSceneData.length === 0) {
-                alert(i18n[currentLang].alertSceneEmpty);
+                alert("A cena está vazia! / Scene is empty!");
                 return;
             }
-            let targetPos = [0,0,0];
-            if (window.orbitControls) targetPos = window.orbitControls.target.toArray();
-            const exportData = {
-                items: currentSceneData,
-                cameraPos: window.camera.position.toArray(),
-                cameraRot: window.camera.rotation.toArray(),
-                targetPos: targetPos,
-                renderMode: currentRenderMode,
-                resLevel: currentResLevel
-            };
-            const content = JSON.stringify(exportData, null, 2);
+            const content = JSON.stringify(currentSceneData, null, 2);
             const blob = new Blob([content], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -1541,96 +670,40 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             URL.revokeObjectURL(url);
         }
 
-        let currentExportTarget = 'scene';
-
-        function openExportMenu(target = 'scene', event = null) {
-            if (event) event.stopPropagation();
-            currentExportTarget = target;
-            const targetText = document.getElementById('export-target-text');
-            const controlInput = document.getElementById('export-control-input');
-            const instInput = document.getElementById('export-inst-input');
-            const renderInput = document.getElementById('export-render-input');
-            const titleInput = document.getElementById('export-title-input');
-            
-            if (target === 'scene') {
-                if (currentSceneData.length === 0) {
-                    alert(i18n[currentLang].alertSceneEmpty);
-                    return;
-                }
-                targetText.innerText = (i18n[currentLang].exportTargetScene || "Exportando: Cena Inteira");
-                controlInput.value = 'fpv_room';
-                instInput.value = 'WASD: Move | Mouse: Look | Q/E: Up/Down | V: Res | M: Render';
-                titleInput.value = "ASCII 3D Game";
-            } else {
-                const obj = voxelObjects[target];
-                targetText.innerText = (i18n[currentLang].exportTargetObj || "Exportando Objeto:") + " " + obj.name;
-                controlInput.value = 'orbit';
-                instInput.value = 'Mouse: Click+Drag rot | Scroll: Zoom | V: Res | M: Render';
-                titleInput.value = obj.name;
+        function openExportMenu() {
+            if (currentSceneData.length === 0) {
+                alert("A cena está vazia! / Scene is empty!");
+                return;
             }
-            renderInput.value = currentRenderMode.toString();
-            updateExportInstructions();
-            
-            if (pointerLockControls.isLocked) pointerLockControls.unlock();
+            pointerLockControls.unlock();
             showPanel('panel-export');
         }
 
-        function updateExportInstructions() {
-            const ctrl = document.getElementById('export-control-input').value;
-            const instInput = document.getElementById('export-inst-input');
-            if (ctrl === 'orbit') {
-                instInput.value = i18n[currentLang].instOrbitExport || "Mouse: Click+Drag rot | Scroll: Zoom | V: Res | M: Render";
-            } else {
-                instInput.value = i18n[currentLang].instFpvExport || "WASD: Move | Mouse: Look | Q/E: Up/Down | V: Res | M: Render";
-            }
-        }
-
         function closeExportMenu() {
-            if (currentExportTarget === 'scene') {
-                showPanel(null);
-                if (currentMode === 'room' || currentMode === 'free_fpv') pointerLockControls.lock();
-            } else {
-                showPanel('panel-objects');
-            }
+            showPanel(null);
+            if(currentMode === 'room' || currentMode === 'free_fpv') pointerLockControls.lock();
         }
 
         function confirmExportGame() {
             const title = document.getElementById('export-title-input').value.trim() || 'ASCII 3D Game';
-            const inst = document.getElementById('export-inst-input').value.trim();
-            const renderModeStr = document.getElementById('export-render-input').value;
-            const controlMode = document.getElementById('export-control-input').value;
-            const showFloor = document.getElementById('export-floor-input').checked;
+            const inst = document.getElementById('export-inst-input').value.trim() || 'WASD: Move | Mouse: Look | Q/E: Up/Down | V: Change Resolution';
             
-            let sceneDataToExport;
-            if (currentExportTarget === 'scene') {
-                sceneDataToExport = currentSceneData;
-            } else {
-                sceneDataToExport = [{
-                    code: typeof voxelObjects[currentExportTarget] === 'string' ? voxelObjects[currentExportTarget] : voxelObjects[currentExportTarget].code,
-                    position: {x: 0, y: 0, z: 0},
-                    scale: {x: 1, y: 1, z: 1},
-                    rotation: {x: 0, y: 0, z: 0}
-                }];
-            }
+            const controlsType = document.getElementById('export-controls-select').value;
+            const renderInit = document.getElementById('export-render-initial').value;
+            const renderLock = document.getElementById('export-render-lock').checked;
             
-            let targetPos = [0,0,0];
-            if (window.orbitControls) targetPos = window.orbitControls.target.toArray();
-            const exportData = {
-                items: sceneDataToExport,
-                cameraPos: window.camera.position.toArray(),
-                cameraRot: window.camera.rotation.toArray(),
-                targetPos: targetPos,
-                renderMode: currentRenderMode,
-                resLevel: currentResLevel
-            };
-            // Safely stringify and escape scripts - FIXED BACKSLASH BUG
-            const sceneJson = JSON.stringify(exportData).replace(/</g, '\\u003c');
-            
+            const sceneJson = JSON.stringify(currentSceneData);
+            const floorVis = floor.visible;
+            const camPos = pointerLockControls.getObject().position.toArray();
+            const camEuler = window.camera.rotation.toArray();
+            const camRot = [camEuler[0], camEuler[1], camEuler[2], camEuler[3]];
+            const isFPS = (controlsType === 'fps');
+
             const htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>${title}</title>
     <style>
         body { margin: 0; padding: 0; background-color: #000; color: #0f0; font-family: 'Courier New', Courier, monospace; overflow: hidden; height: 100vh; user-select: none; }
@@ -1638,6 +711,12 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         #overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(0,0,0,0.8); cursor: pointer; pointer-events: auto; }
         .box { border: 2px solid #0f0; padding: 20px; text-align: center; background: rgba(0,20,0,0.9); border-radius: 10px; box-shadow: 0 0 20px #0f0; }
         h1 { margin-top: 0; text-shadow: 0 0 5px #0f0; }
+        /* mobile controls */
+        #joystick-zone { position: absolute; bottom: 20px; left: 20px; width: 120px; height: 120px; background: rgba(0,255,0,0.1); border: 2px solid #0f0; border-radius: 50%; display: none; z-index: 20; touch-action: none; }
+        #joystick-knob { position: absolute; top: 30px; left: 30px; width: 60px; height: 60px; background: rgba(0,255,0,0.5); border-radius: 50%; pointer-events: none; }
+        #look-zone { position: absolute; top: 0; right: 0; width: 50%; height: 100%; z-index: 10; display: none; touch-action: none; }
+        @media (max-width: 768px) { #joystick-zone, #look-zone { display: block; } }
+        #crosshair { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #0f0; font-size: 24px; font-weight: bold; pointer-events: none; z-index: 5; display: ${isFPS ? 'block' : 'none'}; }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>
     <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/PointerLockControls.js"><\/script>
@@ -1645,23 +724,18 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
 </head>
 <body>
     <div id="ascii-container"></div>
+    <div id="crosshair">+</div>
     <div id="overlay">
         <div class="box">
             <h1>${title}</h1>
-            <p>Click to start</p>
+            <p>Click/Tap to start</p>
             <p style="font-size: 12px; color: #aaa;">${inst}</p>
         </div>
     </div>
+    <div id="joystick-zone"><div id="joystick-knob"></div></div>
+    <div id="look-zone"></div>
     <script>
-        const exportData = ${sceneJson};
-        const sceneData = exportData.items || exportData; 
-        const controlMode = "${controlMode}";
-        const initialRenderMode = exportData.renderMode !== undefined ? exportData.renderMode : ${renderModeStr};
-        const initialResLevel = exportData.resLevel || 0;
-        const initialCamPos = exportData.cameraPos || [10, 10, 15];
-        const initialCamRot = exportData.cameraRot || [0, 0, 0];
-        const initialTarget = exportData.targetPos || [0, 0, 0];
-        
+        const sceneData = ${sceneJson};
         const scene = new THREE.Scene();
         window.scene = scene;
         scene.background = new THREE.Color(0x000000);
@@ -1678,7 +752,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         window.renderer.domElement.style.height = '100%';
         window.renderer.domElement.style.zIndex = '0';
         window.renderer.domElement.style.opacity = '0';
-        
+        window.renderer.domElement.style.pointerEvents = '${isFPS ? 'none' : 'auto'}';
         document.body.insertBefore(window.renderer.domElement, document.getElementById('ascii-container'));
         renderer.shadowMap.enabled = true;
         renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -1688,58 +762,54 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         let cols, rows, pixels;
         let charW = 6, charH = 10;
         let asciiScale = 1.0;
-        let currentResLevel = typeof initialResLevel !== 'undefined' ? initialResLevel : 0;
-        let currentRenderMode = initialRenderMode;
-        const renderModes = ["ASCII", "ASCII (Color)", "3D"];
+        let currentResLevel = 0;
+        let currentRenderMode = ${renderInit};
+        const renderModes = ["ASCII", "Real 3D", "Wireframe", "RTX", "Normals", "Depth"];
 
-        function setRenderMode(mode) {
-            currentRenderMode = mode % renderModes.length;
+        function cycleRenderMode(preserve = false) {
+            if (!preserve) currentRenderMode = (currentRenderMode + 1) % renderModes.length;
             const canvas = window.renderer.domElement;
-            
-            if (currentRenderMode === 0 || currentRenderMode === 1) {
+            if (currentRenderMode === 0) {
                 document.getElementById('ascii-container').style.display = 'block';
                 canvas.style.opacity = '0';
+                canvas.style.pointerEvents = '${isFPS ? 'none' : 'auto'}';
                 window.renderer.toneMapping = THREE.NoToneMapping;
             } else {
                 document.getElementById('ascii-container').style.display = 'none';
                 canvas.style.opacity = '1';
                 canvas.style.pointerEvents = 'auto';
-                window.renderer.toneMapping = THREE.NoToneMapping;
-                window.renderer.toneMappingExposure = 1.0;
+                if (currentRenderMode === 3) {
+                    window.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                    window.renderer.toneMappingExposure = 1.2;
+                } else {
+                    window.renderer.toneMapping = THREE.NoToneMapping;
+                    window.renderer.toneMappingExposure = 1.0;
+                }
             }
-            
             window.scene.overrideMaterial = null;
-            
+            if (currentRenderMode === 2) window.scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+            else if (currentRenderMode === 4) window.scene.overrideMaterial = new THREE.MeshNormalMaterial();
+            else if (currentRenderMode === 5) window.scene.overrideMaterial = new THREE.MeshDepthMaterial();
             setupAsciiGrid();
         }
-
-        function cycleRenderMode() {
-            setRenderMode(currentRenderMode + 1);
-        }
+        cycleRenderMode(true);
 
         function setResolution(level) {
             currentResLevel = level % 3;
             if (currentResLevel === 0) asciiScale = 1.0;
             else if (currentResLevel === 1) asciiScale = 0.75;
             else if (currentResLevel === 2) asciiScale = 0.5;
-            
-            charW = 6 * asciiScale;
-            charH = 10 * asciiScale;
-            
-            asciiContainer.style.transform = 'scale(' + asciiScale + ')';
+            charW = 6 * asciiScale; charH = 10 * asciiScale;
+            asciiContainer.style.transform = \`scale(\${asciiScale})\`;
             asciiContainer.style.transformOrigin = 'top left';
-            asciiContainer.style.width = (100 / asciiScale) + '%';
-            asciiContainer.style.height = (100 / asciiScale) + '%';
-            
+            asciiContainer.style.width = \`\${100 / asciiScale}%\`;
+            asciiContainer.style.height = \`\${100 / asciiScale}%\`;
             setupAsciiGrid();
         }
-
-        function cycleResolution() {
-            setResolution(currentResLevel + 1);
-        }
+        function cycleResolution() { setResolution(currentResLevel + 1); }
 
         function setupAsciiGrid() {
-            if (typeof currentRenderMode !== 'undefined' && currentRenderMode !== 0 && currentRenderMode !== 1) {
+            if (typeof currentRenderMode !== 'undefined' && currentRenderMode !== 0) {
                 window.renderer.setSize(window.innerWidth, window.innerHeight);
                 window.camera.aspect = window.innerWidth / window.innerHeight;
                 window.camera.updateProjectionMatrix();
@@ -1754,15 +824,12 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         }
         setupAsciiGrid();
         window.addEventListener('resize', setupAsciiGrid);
-        
-        setRenderMode(currentRenderMode);
 
         const ambientLight = new THREE.AmbientLight(0x404040, 1.5);
         scene.add(ambientLight);
         const centerLight = new THREE.PointLight(0xaabbff, 1.5, 80);
         centerLight.position.set(0, 12, 0);
         centerLight.castShadow = true;
-        centerLight.shadow.bias = -0.005;
         scene.add(centerLight);
         const ceilingLight = new THREE.PointLight(0xffddaa, 0.8, 60);
         ceilingLight.position.set(0, 20, 0);
@@ -1773,42 +840,58 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         const floor = new THREE.Mesh(new THREE.BoxGeometry(1000, 1, 1000), matFloor);
         floor.position.y = -0.5;
         floor.receiveShadow = true;
-        floor.visible = ${showFloor};
+        floor.visible = ${floorVis};
         scene.add(floor);
 
+        const isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        const overlay = document.getElementById('overlay');
+        
+        const isFPS = ${isFPS};
         let controls;
-        if (controlMode === 'orbit') {
+        if (isFPS) {
+            controls = new THREE.PointerLockControls(camera, document.body);
+            scene.add(controls.getObject());
+            const originalLock = controls.lock.bind(controls);
+            controls.lock = function() {
+                try { if (document.body.requestPointerLock) { originalLock(); } else { controls.isLocked = true; controls.dispatchEvent({type: 'lock'}); } } catch(e) { controls.isLocked = true; controls.dispatchEvent({type: 'lock'}); }
+            };
+            const originalUnlock = controls.unlock.bind(controls);
+            controls.unlock = function() {
+                try { if (document.exitPointerLock) { originalUnlock(); } else { controls.isLocked = false; controls.dispatchEvent({type: 'unlock'}); } } catch(e) { controls.isLocked = false; controls.dispatchEvent({type: 'unlock'}); }
+            };
+            controls.getObject().position.fromArray([${camPos.join(',')}]);
+            window.camera.rotation.fromArray([${camRot[0]}, ${camRot[1]}, ${camRot[2]}, "${camRot[3]}"]);
+
+            overlay.addEventListener('click', () => {
+                if (!isMobile) controls.lock();
+                overlay.style.display = 'none';
+            });
+            controls.addEventListener('lock', () => overlay.style.display = 'none');
+            controls.addEventListener('unlock', () => {
+                if (!isMobile) overlay.style.display = 'flex';
+            });
+        } else {
             controls = new THREE.OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
             controls.dampingFactor = 0.05;
-            camera.position.fromArray(initialCamPos);
-            camera.rotation.fromArray(initialCamRot);
-            controls.target.fromArray(initialTarget);
+            window.camera.position.fromArray([${camPos.join(',')}]);
+            window.camera.rotation.fromArray([${camRot[0]}, ${camRot[1]}, ${camRot[2]}, "${camRot[3]}"]);
+            const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+            controls.target.copy(camera.position).add(forward.multiplyScalar(10));
+            controls.update();
+
+            document.getElementById('joystick-zone').style.display = 'none';
+            document.getElementById('look-zone').style.display = 'none';
             
-            const overlay = document.getElementById('overlay');
             overlay.addEventListener('click', () => {
                 overlay.style.display = 'none';
             });
-        } else {
-            controls = new THREE.PointerLockControls(camera, document.body);
-            scene.add(controls.getObject());
-            controls.getObject().position.fromArray(initialCamPos);
-            controls.getObject().rotation.fromArray(initialCamRot);
-            
-            const overlay = document.getElementById('overlay');
-            overlay.addEventListener('click', () => controls.lock());
-            controls.addEventListener('lock', () => overlay.style.display = 'none');
-            controls.addEventListener('unlock', () => overlay.style.display = 'flex');
         }
 
         sceneData.forEach(item => {
-            let codeStr = typeof item === 'string' ? item : item.code;
-            let pos = item.position || {x:0, y:0, z:0};
-            let scl = item.scale || {x:1, y:1, z:1};
-            let rot = item.rotation || {x:0, y:0, z:0};
-            window.spawnTargetPosition = new THREE.Vector3(pos.x, pos.y, pos.z);
-            window.spawnTargetScale = new THREE.Vector3(scl.x, scl.y, scl.z);
-            window.spawnTargetRotation = new THREE.Vector3(rot.x, rot.y, rot.z);
+            window.spawnTargetPosition = new THREE.Vector3(item.position.x, item.position.y, item.position.z);
+            window.spawnTargetScale = item.scale ? new THREE.Vector3(item.scale.x, item.scale.y, item.scale.z) : new THREE.Vector3(1, 1, 1);
+            window.spawnTargetRotation = item.rotation ? new THREE.Vector3(item.rotation.x, item.rotation.y, item.rotation.z) : new THREE.Vector3(0, 0, 0);
 
             const originalAdd = window.scene.add.bind(window.scene);
             window.scene.add = function(...objects) {
@@ -1822,7 +905,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 originalAdd(...objects);
             };
 
-            try { eval("(function(){ " + codeStr + " })();"); } catch(e) { console.error(e); }
+            try { eval(item.code); } catch(e) { console.error(e); }
             window.scene.add = originalAdd;
         });
         window.spawnTargetPosition = null;
@@ -1830,8 +913,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         let moveF=false, moveB=false, moveL=false, moveR=false, moveU=false, moveD=false;
         document.addEventListener('keydown', (e) => {
             if (e.code === 'KeyV') cycleResolution();
-            if (e.code === 'KeyM') cycleRenderMode();
-            if (controlMode === 'orbit') return;
+            ${renderLock ? '' : "if (e.code === 'KeyM') cycleRenderMode();"}
             switch(e.code) {
                 case 'ArrowUp': case 'KeyW': moveF=true; break;
                 case 'ArrowLeft': case 'KeyA': moveL=true; break;
@@ -1842,7 +924,6 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             }
         });
         document.addEventListener('keyup', (e) => {
-            if (controlMode === 'orbit') return;
             switch(e.code) {
                 case 'ArrowUp': case 'KeyW': moveF=false; break;
                 case 'ArrowLeft': case 'KeyA': moveL=false; break;
@@ -1853,6 +934,45 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             }
         });
 
+        // Mobile Controls (FPS only)
+        const joystickZone = document.getElementById('joystick-zone');
+        const joystickKnob = document.getElementById('joystick-knob');
+        const lookZone = document.getElementById('look-zone');
+        let jx = 0, jy = 0, touchId = null, lookTouchId = null, lastLookX = 0, lastLookY = 0;
+        
+        if (isFPS) {
+            joystickZone.addEventListener('touchstart', e => { e.preventDefault(); touchId = e.changedTouches[0].identifier; updateJoystick(e.changedTouches[0]); });
+            joystickZone.addEventListener('touchmove', e => { e.preventDefault(); for(let t of e.changedTouches) { if(t.identifier === touchId) updateJoystick(t); }});
+            joystickZone.addEventListener('touchend', e => { e.preventDefault(); for(let t of e.changedTouches) { if(t.identifier === touchId) resetJoystick(); }});
+            function updateJoystick(t) {
+                const rect = joystickZone.getBoundingClientRect();
+                const cx = rect.left + rect.width/2, cy = rect.top + rect.height/2;
+                let dx = t.clientX - cx, dy = t.clientY - cy;
+                const dist = Math.sqrt(dx*dx + dy*dy), max = rect.width/2;
+                if (dist > max) { dx = (dx/dist)*max; dy = (dy/dist)*max; }
+                joystickKnob.style.transform = \`translate(\${dx}px, \${dy}px)\`;
+                jx = dx / max; jy = dy / max;
+            }
+            function resetJoystick() { joystickKnob.style.transform = 'translate(0px, 0px)'; jx = 0; jy = 0; touchId = null; }
+
+            lookZone.addEventListener('touchstart', e => { e.preventDefault(); lookTouchId = e.changedTouches[0].identifier; lastLookX = e.changedTouches[0].clientX; lastLookY = e.changedTouches[0].clientY; });
+            lookZone.addEventListener('touchmove', e => {
+                e.preventDefault();
+                for (let t of e.changedTouches) {
+                    if (t.identifier === lookTouchId) {
+                        const dx = t.clientX - lastLookX; const dy = t.clientY - lastLookY;
+                        lastLookX = t.clientX; lastLookY = t.clientY;
+                        const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                        euler.setFromQuaternion(camera.quaternion);
+                        euler.y -= dx * 0.005; euler.x -= dy * 0.005;
+                        euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+                        camera.quaternion.setFromEuler(euler);
+                    }
+                }
+            });
+            lookZone.addEventListener('touchend', e => { e.preventDefault(); for(let t of e.changedTouches) { if(t.identifier === lookTouchId) lookTouchId = null; }});
+        }
+
         const velocity = new THREE.Vector3(), direction = new THREE.Vector3();
         let prevTime = performance.now();
         const gl = renderer.getContext();
@@ -1861,89 +981,97 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             requestAnimationFrame(animate);
             const time = performance.now();
             const delta = (time - prevTime) / 1000;
-            
-            if (controlMode === 'orbit') {
-                controls.update();
-            } else if (controls.isLocked) {
-                velocity.x -= velocity.x * 10.0 * delta;
-                velocity.z -= velocity.z * 10.0 * delta;
-                velocity.y -= velocity.y * 10.0 * delta;
-                direction.z = Number(moveF) - Number(moveB);
-                direction.x = Number(moveR) - Number(moveL);
-                direction.y = Number(moveD) - Number(moveU);
-                direction.normalize();
-                if(moveF || moveB) velocity.z -= direction.z * 100.0 * delta;
-                if(moveL || moveR) velocity.x -= direction.x * 100.0 * delta;
-                if(moveU || moveD) velocity.y -= direction.y * 100.0 * delta;
-                controls.moveRight(-velocity.x * delta);
-                controls.moveForward(-velocity.z * delta);
-                controls.getObject().position.y -= velocity.y * delta;
-                
-                if (controlMode === 'fpv_room') {
-                    const pos = controls.getObject().position;
-                    const limit = 28.5;
-                    if (pos.x > limit) pos.x = limit;
-                    if (pos.x < -limit) pos.x = -limit;
-                    if (pos.z > limit) pos.z = limit;
-                    if (pos.z < -limit) pos.z = -limit;
-                    if (pos.y < 1) pos.y = 1;
-                    if (pos.y > 20) pos.y = 20;
+
+            let gpMoveX = 0, gpMoveY = 0, gpLookX = 0, gpLookY = 0;
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (let i = 0; i < gamepads.length; i++) {
+                const gp = gamepads[i];
+                if (gp) {
+                    if (Math.abs(gp.axes[0]) > 0.1) gpMoveX = gp.axes[0];
+                    if (Math.abs(gp.axes[1]) > 0.1) gpMoveY = gp.axes[1];
+                    if (Math.abs(gp.axes[2]) > 0.1) gpLookX = gp.axes[2];
+                    if (Math.abs(gp.axes[3]) > 0.1) gpLookY = gp.axes[3];
                 }
             }
+            const isGamepadActive = gpMoveX !== 0 || gpMoveY !== 0 || gpLookX !== 0 || gpLookY !== 0;
+
+            if (isFPS && controls.isLocked && (gpLookX !== 0 || gpLookY !== 0)) {
+                const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                euler.setFromQuaternion(camera.quaternion);
+                euler.y -= gpLookX * 2.0 * delta; 
+                euler.x -= gpLookY * 2.0 * delta;
+                euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+                camera.quaternion.setFromEuler(euler);
+            }
+            
+            if (isFPS) {
+                if (controls.isLocked || isMobile) {
+                    velocity.x -= velocity.x * 10.0 * delta;
+                    velocity.z -= velocity.z * 10.0 * delta;
+                    velocity.y -= velocity.y * 10.0 * delta;
+                    
+                    if (isMobile) {
+                        direction.z = jy;
+                        direction.x = jx;
+                        direction.y = 0;
+                    } else {
+                        direction.z = Number(moveF) - Number(moveB);
+                        direction.x = Number(moveR) - Number(moveL);
+                        direction.y = Number(moveD) - Number(moveU);
+                    }
+                    
+                    if (gpMoveY !== 0) direction.z = -gpMoveY;
+                    if (gpMoveX !== 0) direction.x = gpMoveX;
+
+                    direction.normalize();
+                    if(moveF || moveB || isMobile || gpMoveY !== 0) velocity.z -= direction.z * 100.0 * delta;
+                    if(moveL || moveR || isMobile || gpMoveX !== 0) velocity.x -= direction.x * 100.0 * delta;
+                    if(moveU || moveD) velocity.y -= direction.y * 100.0 * delta;
+                    
+                    if (isMobile || isGamepadActive) {
+                        const camDir = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+                        const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(camera.quaternion);
+                        camDir.y = 0; camDir.normalize(); camRight.y = 0; camRight.normalize();
+                        const moveVec = camDir.multiplyScalar(-velocity.z * delta).add(camRight.multiplyScalar(-velocity.x * delta));
+                        controls.getObject().position.add(moveVec);
+                    } else {
+                        controls.moveRight(-velocity.x * delta);
+                        controls.moveForward(-velocity.z * delta);
+                    }
+                    controls.getObject().position.y -= velocity.y * delta;
+                }
+            } else {
+                controls.update();
+            }
+
             prevTime = time;
 
             renderer.render(scene, camera);
-            if (currentRenderMode === 0 || currentRenderMode === 1) {
+            if (currentRenderMode === 0) {
                 gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-                
-                if (currentRenderMode === 0) {
-                    let asciiLines = [];
-                    for (let y = rows - 1; y >= 0; y--) {
-                        let rowStr = "";
-                        for (let x = 0; x < cols; x++) {
-                            const idx = (y * cols + x) * 4;
-                            const luma = 0.299*pixels[idx] + 0.587*pixels[idx+1] + 0.114*pixels[idx+2];
-                            rowStr += ramp[Math.floor((luma/255)*(ramp.length-1))];
-                        }
-                        asciiLines.push(rowStr);
+                let asciiLines = [];
+                for (let y = rows - 1; y >= 0; y--) {
+                    let rowStr = "";
+                    for (let x = 0; x < cols; x++) {
+                        const idx = (y * cols + x) * 4;
+                        const luma = 0.299*pixels[idx] + 0.587*pixels[idx+1] + 0.114*pixels[idx+2];
+                        rowStr += ramp[Math.floor((luma/255)*(ramp.length-1))];
                     }
-                    asciiContainer.textContent = asciiLines.join('\\n');
-                } else {
-                    let asciiHTML = "";
-                    let lastColor = "";
-                    for (let y = rows - 1; y >= 0; y--) {
-                        for (let x = 0; x < cols; x++) {
-                            const idx = (y * cols + x) * 4;
-                            const r = pixels[idx];
-                            const g = pixels[idx+1];
-                            const b = pixels[idx+2];
-                            const luma = 0.299*r + 0.587*g + 0.114*b;
-                            const charIndex = Math.floor((luma/255)*(ramp.length-1));
-                            
-                            const hex = "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
-                            if (hex !== lastColor) {
-                                if (lastColor !== "") asciiHTML += "</span>";
-                                asciiHTML += \`<span style="color:\${hex}">\`;
-                                lastColor = hex;
-                            }
-                            asciiHTML += ramp[charIndex];
-                        }
-                        asciiHTML += "\\n";
-                    }
-                    if (lastColor !== "") asciiHTML += "</span>";
-                    asciiContainer.innerHTML = asciiHTML;
+                    asciiLines.push(rowStr);
                 }
+                asciiContainer.textContent = asciiLines.join('\n');
             }
         }
         animate();
     <\/script>
 </body>
 </html>`;
+
             const blob = new Blob([htmlContent], { type: 'text/html' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = (title.toLowerCase().replace(/[^a-z0-9]/g, '_') || "jogo_ascii") + ".html";
+            a.download = "jogo_ascii_3d.html";
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
@@ -1951,7 +1079,6 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             
             closeExportMenu();
         }
-
 
         function triggerSceneImport(mode = 'free_fpv') {
             window.sceneImportMode = mode;
@@ -1966,49 +1093,46 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             reader.onload = function(e) {
                 try {
                     const parsedData = JSON.parse(e.target.result);
-                    let sceneItems = null;
-                    let extraData = null;
-                    
                     if (Array.isArray(parsedData) && parsedData.length > 0 && parsedData[0].position) {
-                        sceneItems = parsedData;
-                    } else if (parsedData.items && Array.isArray(parsedData.items)) {
-                        sceneItems = parsedData.items;
-                        extraData = parsedData;
-                    }
-
-                    if (sceneItems) {
                         const targetMode = window.sceneImportMode || 'free_fpv';
-                        loadSceneIntoMode(sceneItems, targetMode, extraData);
+                        loadSceneIntoMode(parsedData, targetMode);
                     } else {
-                        alert(i18n[currentLang].alertSceneInvalid);
+                        alert("Arquivo de cena inválido.");
                     }
                 } catch(err) {
-                    alert(i18n[currentLang].alertSceneReadError);
+                    alert("Erro ao ler o arquivo.");
                 }
             };
             reader.readAsText(file);
             event.target.value = '';
         }
 
-        function loadSceneIntoMode(sceneData, targetMode, extraData = null) {
+        function loadSceneIntoMode(sceneData, targetMode, skipAutoload = false) {
+            currentMode = targetMode;
+            showPanel(null);
+            document.getElementById('hud').classList.add('active');
+            document.getElementById('crosshair').classList.add('active');
+            
             if (targetMode === 'room') {
-                enterRoom();
+                document.getElementById('spawn-btn').style.display = 'block';
+                document.getElementById('save-scene-btn').style.display = 'block';
+                document.getElementById('export-game-btn').style.display = 'block';
             } else {
-                currentMode = 'free_fpv';
-                showPanel(null);
-                document.getElementById('hud').classList.add('active');
-                document.getElementById('crosshair').classList.add('active');
                 document.getElementById('spawn-btn').style.display = 'none';
                 document.getElementById('save-scene-btn').style.display = 'none';
                 document.getElementById('export-game-btn').style.display = 'none';
-
-                clearCustomObjects();
-                window.roomGroup.visible = true; 
-
-                orbitControls.enabled = false;
-                pointerLockControls.getObject().position.set(0, 10, 20);
-                pointerLockControls.lock();
             }
+
+            clearCustomObjects();
+            window.roomGroup.visible = true; 
+            orbitControls.enabled = false;
+            orbitControls.autoRotate = false;
+            
+            if (targetMode === 'free_fpv') {
+                pointerLockControls.getObject().position.set(0, 10, 20);
+            }
+            
+            updateHUDText();
 
             currentSceneData = sceneData;
 
@@ -2019,42 +1143,23 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 window.currentSpawnId = item.spawnId || (Date.now() + Math.random());
                 item.spawnId = window.currentSpawnId;
                 
-                try {
-                    // Wrap in IIFE to prevent re-declaration errors
-                    eval("(function(){ " + item.code + " })();");
-                } catch(e) {
-                    console.error("Erro ao carregar objeto da cena:", e);
-                }
+                try { eval(item.code); } catch(e) { console.error(e); }
             });
             window.spawnTargetPosition = null;
             window.spawnTargetScale = null;
             window.spawnTargetRotation = null;
             window.currentSpawnId = null;
-            
-            if (extraData) {
-                if (extraData.renderMode !== undefined) {
-                    currentRenderMode = extraData.renderMode;
-                    cycleRenderMode(true);
-                }
-                if (extraData.resLevel !== undefined) {
-                    setResolution(extraData.resLevel);
-                }
-                if (extraData.cameraPos) {
-                    window.camera.position.fromArray(extraData.cameraPos);
-                }
-                if (extraData.cameraRot) {
-                    window.camera.rotation.fromArray(extraData.cameraRot);
-                }
-                if (extraData.targetPos && window.orbitControls) {
-                    window.orbitControls.target.fromArray(extraData.targetPos);
-                }
-            }
+
+            if (!skipAutoload) pointerLockControls.lock();
         }
 
+        // ==========================================
+        // GEMINI API CALL
+        // ==========================================
         async function generateObject() {
             const apiKey = localStorage.getItem('gemini_api_key');
             if (!apiKey) {
-                alert(i18n[currentLang].alertNoApiKey);
+                alert("Por favor, configure sua chave de API Gemini primeiro!");
                 showPanel('panel-api');
                 return;
             }
@@ -2129,36 +1234,18 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 
                 enterSimpleView(0);
                 
-                setTimeout(() => {
-                    const asciiEl = document.getElementById('ascii-container');
-                    if (asciiEl && asciiEl.textContent) {
-                        const lines = asciiEl.textContent.split('\n');
-                        const startY = Math.max(0, Math.floor(lines.length / 2) - 10);
-                        const endY = Math.min(lines.length, startY + 20);
-                        let thumb = "";
-                        for(let y = startY; y < endY; y++) {
-                            if (!lines[y]) continue;
-                            const line = lines[y];
-                            const startX = Math.max(0, Math.floor(line.length / 2) - 25);
-                            thumb += line.substring(startX, startX + 50) + "\n";
-                        }
-                        voxelObjects[0].thumbnail = thumb;
-                        localStorage.setItem('voxel_objects', JSON.stringify(voxelObjects));
-                        if (document.getElementById('panel-objects').classList.contains('active')) {
-                            renderObjectsList();
-                        }
-                    }
-                }, 2000);
-                
             } catch(e) {
                 console.error(e);
-                alert(i18n[currentLang].alertGenError + e.message);
+                alert("Erro ao gerar objeto: " + e.message);
             } finally {
                 document.getElementById('generate-btn').disabled = false;
                 document.getElementById('loading-msg').style.display = 'none';
             }
         }
 
+        // ==========================================
+        // THREE.JS & ASCII RENDER ENGINE
+        // ==========================================
         window.scene = new THREE.Scene();
         window.scene.background = new THREE.Color(0x000000);
         window.scene.fog = new THREE.FogExp2(0x000000, 0.02);
@@ -2172,7 +1259,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         window.renderer.domElement.style.height = '100%';
         window.renderer.domElement.style.zIndex = '0';
         window.renderer.domElement.style.opacity = '0';
-        
+        window.renderer.domElement.style.pointerEvents = 'none';
         document.body.insertBefore(window.renderer.domElement, document.getElementById('ascii-container'));
         window.renderer.shadowMap.enabled = true;
         window.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -2186,7 +1273,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         let asciiScale = 1.0;
         let currentResLevel = 0;
         let currentRenderMode = 0;
-        const renderModes = ["ASCII", "ASCII (Color)", "3D"];
+        const renderModes = ["ASCII", "Real 3D", "Wireframe", "RTX", "Normals", "Depth"];
 
         function cycleRenderMode(preserveMode = false) {
             if (!preserveMode) {
@@ -2194,36 +1281,40 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             }
             const btnMenu = document.getElementById('render-btn-menu');
             const btnHud = document.getElementById('render-btn-hud');
-            const resBtnMenu = document.getElementById('res-btn-menu');
-            const resBtnHud = document.getElementById('res-btn-hud');
             
             const prefix = currentLang === 'en' ? 'Mode' : currentLang === 'es' ? 'Modo' : currentLang === 'ja' ? 'モード' : 'Modo';
-            if (btnMenu) btnMenu.innerText = prefix + ': ' + renderModes[currentRenderMode] + ' (M)';
-            if (btnHud) btnHud.innerText = prefix + ': ' + renderModes[currentRenderMode] + ' (M)';
-            
-            if (currentRenderMode === 0 || currentRenderMode === 1) {
-                if (resBtnMenu) resBtnMenu.style.display = 'block';
-                if (resBtnHud) resBtnHud.style.display = 'block';
-            } else {
-                if (resBtnMenu) resBtnMenu.style.display = 'none';
-                if (resBtnHud) resBtnHud.style.display = 'none';
-            }
+            if (btnMenu) btnMenu.innerText = `${prefix}: ${renderModes[currentRenderMode]} (M)`;
+            if (btnHud) btnHud.innerText = `${prefix}: ${renderModes[currentRenderMode]} (M)`;
             
             const canvas = window.renderer.domElement;
             
-            if (currentRenderMode === 0 || currentRenderMode === 1) {
+            if (currentRenderMode === 0) {
                 document.getElementById('ascii-container').style.display = 'block';
                 canvas.style.opacity = '0';
+                canvas.style.pointerEvents = 'none';
                 window.renderer.toneMapping = THREE.NoToneMapping;
             } else {
                 document.getElementById('ascii-container').style.display = 'none';
                 canvas.style.opacity = '1';
                 canvas.style.pointerEvents = 'auto';
-                window.renderer.toneMapping = THREE.NoToneMapping;
-                window.renderer.toneMappingExposure = 1.0;
+                
+                if (currentRenderMode === 3) {
+                    window.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+                    window.renderer.toneMappingExposure = 1.2;
+                } else {
+                    window.renderer.toneMapping = THREE.NoToneMapping;
+                    window.renderer.toneMappingExposure = 1.0;
+                }
             }
             
             window.scene.overrideMaterial = null;
+            if (currentRenderMode === 2) {
+                window.scene.overrideMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+            } else if (currentRenderMode === 4) {
+                window.scene.overrideMaterial = new THREE.MeshNormalMaterial();
+            } else if (currentRenderMode === 5) {
+                window.scene.overrideMaterial = new THREE.MeshDepthMaterial();
+            }
             
             setupAsciiGrid();
         }
@@ -2242,14 +1333,14 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             charW = 6 * asciiScale;
             charH = 10 * asciiScale;
             
-            asciiContainer.style.transform = 'scale(' + asciiScale + ')';
+            asciiContainer.style.transform = `scale(${asciiScale})`;
             asciiContainer.style.transformOrigin = 'top left';
-            asciiContainer.style.width = (100 / asciiScale) + '%';
-            asciiContainer.style.height = (100 / asciiScale) + '%';
+            asciiContainer.style.width = `${100 / asciiScale}%`;
+            asciiContainer.style.height = `${100 / asciiScale}%`;
             
             const prefix = currentLang === 'en' ? 'Resolution' : currentLang === 'es' ? 'Resolución' : currentLang === 'ja' ? '解像度' : 'Resolução';
-            if (resBtnMenu) resBtnMenu.innerText = prefix + ': ' + label + ' (V)';
-            if (resBtnHud) resBtnHud.innerText = prefix + ': ' + label + ' (V)';
+            if (resBtnMenu) resBtnMenu.innerText = `${prefix}: ${label} (V)`;
+            if (resBtnHud) resBtnHud.innerText = `${prefix}: ${label} (V)`;
             
             setupAsciiGrid();
         }
@@ -2259,7 +1350,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         }
 
         function setupAsciiGrid() {
-            if (typeof currentRenderMode !== 'undefined' && currentRenderMode !== 0 && currentRenderMode !== 1) {
+            if (typeof currentRenderMode !== 'undefined' && currentRenderMode !== 0) {
                 window.renderer.setSize(window.innerWidth, window.innerHeight);
                 window.camera.aspect = window.innerWidth / window.innerHeight;
                 window.camera.updateProjectionMatrix();
@@ -2267,7 +1358,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             }
             cols = Math.floor(window.innerWidth / charW);
             rows = Math.floor(window.innerHeight / charH);
-            window.renderer.setSize(cols, rows);
+            window.renderer.setSize(cols, rows, false);
             window.camera.aspect = window.innerWidth / window.innerHeight;
             window.camera.updateProjectionMatrix();
             pixels = new Uint8Array(cols * rows * 4);
@@ -2300,22 +1391,6 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         window.scene.add(window.roomGroup);
 
         let currentCustomObjects = [];
-        let baseBodyElements = new Set();
-        Array.from(document.body.children).forEach(el => baseBodyElements.add(el));
-        document.addEventListener("DOMContentLoaded", () => {
-            Array.from(document.body.children).forEach(el => baseBodyElements.add(el));
-        });
-
-        function clearGeneratedUI() {
-            if (baseBodyElements.size === 0) {
-                Array.from(document.body.children).forEach(el => baseBodyElements.add(el));
-            }
-            Array.from(document.body.children).forEach(el => {
-                if (!baseBodyElements.has(el) && el.tagName !== 'SCRIPT' && el.id !== 'ascii-container' && el.id !== 'crosshair' && el.id !== 'ui-layer' && el.tagName !== 'CANVAS') {
-                    el.remove();
-                }
-            });
-        }
         
         const originalAdd = window.scene.add.bind(window.scene);
         window.scene.add = function(...objects) {
@@ -2345,7 +1420,6 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             currentCustomObjects.forEach(obj => window.scene.remove(obj));
             currentCustomObjects = [];
             currentSceneData = [];
-            clearGeneratedUI();
         }
 
         const orbitControls = new THREE.OrbitControls(window.camera, document.body);
@@ -2355,6 +1429,26 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
         
         const pointerLockControls = new THREE.PointerLockControls(window.camera, document.body);
         window.scene.add(pointerLockControls.getObject());
+
+        // Monkey patch PointerLockControls for compatibility on consoles (PS5) without pointer lock
+        const originalLock = pointerLockControls.lock.bind(pointerLockControls);
+        pointerLockControls.lock = function() {
+            try { 
+                if (document.body.requestPointerLock) { originalLock(); } 
+                else { pointerLockControls.isLocked = true; pointerLockControls.dispatchEvent({type: 'lock'}); }
+            } catch(e) {
+                pointerLockControls.isLocked = true; pointerLockControls.dispatchEvent({type: 'lock'});
+            }
+        };
+        const originalUnlock = pointerLockControls.unlock.bind(pointerLockControls);
+        pointerLockControls.unlock = function() {
+            try { 
+                if (document.exitPointerLock) { originalUnlock(); } 
+                else { pointerLockControls.isLocked = false; pointerLockControls.dispatchEvent({type: 'unlock'}); }
+            } catch(e) {
+                pointerLockControls.isLocked = false; pointerLockControls.dispatchEvent({type: 'unlock'});
+            }
+        };
 
         let moveForward = false, moveBackward = false;
         let moveLeft = false, moveRight = false;
@@ -2367,6 +1461,13 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             if (event.target.tagName === 'INPUT' || event.target.tagName === 'TEXTAREA') return;
             if (event.code === 'KeyV') cycleResolution();
             if (event.code === 'KeyM') cycleRenderMode();
+            
+            if (event.code === 'KeyZ' && event.ctrlKey) { undo(); return; }
+            if (event.code === 'KeyY' && event.ctrlKey) { redo(); return; }
+            if (event.code === 'KeyP' && (currentMode === 'room' || currentMode === 'free_fpv')) {
+                if (document.getElementById('panel-spawn').style.display === 'none') openSpawnMenu();
+                else closeSpawnMenu();
+            }
             
             if(currentMode !== 'room' && currentMode !== 'free_fpv') return;
             switch (event.code) {
@@ -2397,6 +1498,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                             const sceneItemIndex = currentSceneData.findIndex(item => item.spawnId === rootObj.userData.spawnId);
                             
                             if (event.code === 'KeyX' || event.code === 'Delete') {
+                                pushUndoState();
                                 window.scene.remove(rootObj);
                                 currentCustomObjects = currentCustomObjects.filter(o => o !== rootObj);
                                 if (sceneItemIndex !== -1) currentSceneData.splice(sceneItemIndex, 1);
@@ -2406,6 +1508,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                                     updateHUDText();
                                 }
                             } else if (event.code === 'KeyR') {
+                                pushUndoState();
                                 rootObj.rotation.y += Math.PI / 2;
                                 if (sceneItemIndex !== -1) {
                                     currentSceneData[sceneItemIndex].rotation = {
@@ -2415,6 +1518,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                                     };
                                 }
                             } else if (['Digit0', 'Numpad0', 'Digit1', 'Numpad1'].includes(event.code)) {
+                                pushUndoState();
                                 const scaleSpeed = 0.15;
                                 const scaleDelta = (event.code === 'Digit1' || event.code === 'Numpad1') ? (1 + scaleSpeed) : (1 - scaleSpeed);
                                 
@@ -2428,6 +1532,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                                     };
                                 }
                             } else if (['PageUp', 'PageDown'].includes(event.code)) {
+                                pushUndoState();
                                 const moveSpeed = 0.5;
                                 rootObj.position.y += (event.code === 'PageUp') ? moveSpeed : -moveSpeed;
                                 
@@ -2485,7 +1590,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             updateHUDText();
         });
 
-        function enterSimpleView(objIndex, customCode = null) {
+        function enterSimpleView(objIndex) {
             currentMode = 'simple';
             showPanel(null); 
             document.getElementById('hud').classList.add('active');
@@ -2500,48 +1605,65 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             
             window.camera.position.set(10, 10, 15);
             orbitControls.enabled = true;
+            orbitControls.autoRotate = false;
             orbitControls.target.set(0, 0, 0);
             orbitControls.update();
             pointerLockControls.unlock();
 
             try {
-                if (customCode) {
-                    eval(customCode);
-                } else {
-                    eval(voxelObjects[objIndex].code);
-                }
+                eval(voxelObjects[objIndex].code);
             } catch(e) {
                 console.error("Erro ao carregar o objeto 3D:", e);
-                alert(i18n[currentLang].alertCodeError);
+                alert("Este objeto gerou um código com erro.");
             }
         }
 
-        function enterRoom() {
-            currentMode = 'room';
-            showPanel(null);
-            document.getElementById('hud').classList.add('active');
-            document.getElementById('crosshair').classList.add('active');
-            document.getElementById('spawn-btn').style.display = 'block';
-            document.getElementById('save-scene-btn').style.display = 'block';
-            document.getElementById('export-game-btn').style.display = 'block';
-            updateHUDText();
-            
-            clearCustomObjects();
-            window.roomGroup.visible = true; 
-            
-            orbitControls.enabled = false;
+        function enterRoom(skipAutoload = false) {
+            if (!skipAutoload) {
+                let savedScene = localStorage.getItem('autosave_scene');
+                if (savedScene && savedScene !== '[]') {
+                    try {
+                        const parsed = JSON.parse(savedScene);
+                        if (parsed.length > 0) {
+                            loadSceneIntoMode(parsed, 'room', false);
+                            return;
+                        }
+                    } catch(e) {}
+                }
+            }
+            loadSceneIntoMode([], 'room', false);
             pointerLockControls.getObject().position.set(0, 5, 10);
-            
-            pointerLockControls.lock();
+        }
+
+        function setMenuBG(index) {
+            const obj = voxelObjects[index];
+            localStorage.setItem('menu_bg_object', obj.code);
+            alert("Fundo definido! Volte ao menu principal para ver.");
+            loadMenuBG();
+        }
+
+        function loadMenuBG() {
+            let bgCode = localStorage.getItem('menu_bg_object');
+            if (bgCode && currentMode === 'menu') {
+                clearCustomObjects();
+                window.roomGroup.visible = false;
+                window.camera.position.set(10, 10, 15);
+                orbitControls.enabled = true;
+                orbitControls.autoRotate = true;
+                orbitControls.autoRotateSpeed = 2.0;
+                orbitControls.target.set(0, 0, 0);
+                try { eval(bgCode); } catch(e) {}
+            }
         }
 
         function exitToMenu() {
+            if (currentMode === 'room' || currentMode === 'free_fpv') autosaveScene();
             currentMode = 'menu';
             pointerLockControls.unlock();
             orbitControls.enabled = false;
             document.getElementById('hud').classList.remove('active');
             document.getElementById('crosshair').classList.remove('active');
-            clearGeneratedUI();
+            loadMenuBG();
             showPanel('panel-menu');
         }
 
@@ -2554,7 +1676,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
             listDiv.innerHTML = '';
             
             if(voxelObjects.length === 0) {
-                listDiv.innerHTML = `<p style="text-align:center;">${i18n[currentLang].emptySpawnList}</p>`;
+                listDiv.innerHTML = '<p style="text-align:center;">Nenhum objeto criado. Crie um no Menu Principal primeiro.</p>';
             } else {
                 voxelObjects.forEach((obj, index) => {
                     const btn = document.createElement('button');
@@ -2563,18 +1685,18 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                     btn.style.marginBottom = '8px';
                     btn.onclick = () => {
                         window.pendingSpawnCode = obj.code;
-                        document.getElementById('panel-spawn').style.display = 'none';
+                        showPanel(null);
                         pointerLockControls.lock();
                     };
                     listDiv.appendChild(btn);
                 });
             }
             
-            document.getElementById('panel-spawn').style.display = 'flex';
+            showPanel('panel-spawn');
         }
 
         function closeSpawnMenu() {
-            document.getElementById('panel-spawn').style.display = 'none';
+            showPanel(null);
             if(currentMode === 'room' || currentMode === 'free_fpv') pointerLockControls.lock();
         }
 
@@ -2587,6 +1709,7 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 const intersects = raycaster.intersectObjects([window.roomGroup], true); 
                 
                 if (intersects.length > 0) {
+                    pushUndoState();
                     window.spawnTargetPosition = intersects[0].point;
                     window.spawnTargetScale = new THREE.Vector3(1, 1, 1);
                     window.spawnTargetRotation = new THREE.Vector3(0, 0, 0);
@@ -2629,7 +1752,29 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
 
             const time = performance.now();
             const delta = ( time - prevTime ) / 1000;
-            
+
+            // Gamepad Support for PS5 / Consoles
+            let gpMoveX = 0, gpMoveY = 0, gpLookX = 0, gpLookY = 0;
+            const gamepads = navigator.getGamepads ? navigator.getGamepads() : [];
+            for (let i = 0; i < gamepads.length; i++) {
+                const gp = gamepads[i];
+                if (gp) {
+                    if (Math.abs(gp.axes[0]) > 0.1) gpMoveX = gp.axes[0];
+                    if (Math.abs(gp.axes[1]) > 0.1) gpMoveY = gp.axes[1];
+                    if (Math.abs(gp.axes[2]) > 0.1) gpLookX = gp.axes[2];
+                    if (Math.abs(gp.axes[3]) > 0.1) gpLookY = gp.axes[3];
+                }
+            }
+
+            if((currentMode === 'room' || currentMode === 'free_fpv') && pointerLockControls.isLocked && (gpLookX !== 0 || gpLookY !== 0)) {
+                const euler = new THREE.Euler(0, 0, 0, 'YXZ');
+                euler.setFromQuaternion(window.camera.quaternion);
+                euler.y -= gpLookX * 2.0 * delta; 
+                euler.x -= gpLookY * 2.0 * delta;
+                euler.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, euler.x));
+                window.camera.quaternion.setFromEuler(euler);
+            }
+
             if((currentMode === 'room' || currentMode === 'free_fpv') && pointerLockControls.isLocked) {
                 velocity.x -= velocity.x * 10.0 * delta;
                 velocity.z -= velocity.z * 10.0 * delta;
@@ -2638,10 +1783,14 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 direction.z = Number( moveForward ) - Number( moveBackward );
                 direction.x = Number( moveRight ) - Number( moveLeft );
                 direction.y = Number( moveDown ) - Number( moveUp );
+
+                if (gpMoveY !== 0) direction.z = -gpMoveY;
+                if (gpMoveX !== 0) direction.x = gpMoveX;
+
                 direction.normalize();
 
-                if ( moveForward || moveBackward ) velocity.z -= direction.z * 100.0 * delta;
-                if ( moveLeft || moveRight ) velocity.x -= direction.x * 100.0 * delta;
+                if ( moveForward || moveBackward || gpMoveY !== 0 ) velocity.z -= direction.z * 100.0 * delta;
+                if ( moveLeft || moveRight || gpMoveX !== 0 ) velocity.x -= direction.x * 100.0 * delta;
                 if ( moveUp || moveDown ) velocity.y -= direction.y * 100.0 * delta;
 
                 pointerLockControls.moveRight( - velocity.x * delta );
@@ -2660,63 +1809,38 @@ Faça o objeto ter o tamanho aproximado de 5x5x5, ou algo que caiba no quarto, e
                 }
             }
             
-            if(currentMode === 'simple') {
+            if(currentMode === 'simple' || currentMode === 'menu') {
                 orbitControls.update();
             }
 
             prevTime = time;
 
             window.renderer.render(window.scene, window.camera);
-            if (currentRenderMode === 0 || currentRenderMode === 1) {
+            if (currentRenderMode === 0) {
                 gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
                 
-                if (currentRenderMode === 0) {
-                    let asciiLines = [];
-                    for (let y = rows - 1; y >= 0; y--) {
-                        let rowStr = "";
-                        for (let x = 0; x < cols; x++) {
-                            const index = (y * cols + x) * 4;
-                            const r = pixels[index];
-                            const g = pixels[index + 1];
-                            const b = pixels[index + 2];
-                            
-                            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                            const charIndex = Math.floor((luma / 255) * (ramp.length - 1));
-                            rowStr += ramp[charIndex];
-                        }
-                        asciiLines.push(rowStr);
+                let asciiLines = [];
+                for (let y = rows - 1; y >= 0; y--) {
+                    let rowStr = "";
+                    for (let x = 0; x < cols; x++) {
+                        const index = (y * cols + x) * 4;
+                        const r = pixels[index];
+                        const g = pixels[index + 1];
+                        const b = pixels[index + 2];
+                        
+                        const luma = 0.299 * r + 0.587 * g + 0.114 * b;
+                        const charIndex = Math.floor((luma / 255) * (ramp.length - 1));
+                        rowStr += ramp[charIndex];
                     }
-                    asciiContainer.textContent = asciiLines.join('\n');
-                } else {
-                    let asciiHTML = "";
-                    let lastColor = "";
-                    for (let y = rows - 1; y >= 0; y--) {
-                        for (let x = 0; x < cols; x++) {
-                            const index = (y * cols + x) * 4;
-                            const r = pixels[index];
-                            const g = pixels[index + 1];
-                            const b = pixels[index + 2];
-                            
-                            const luma = 0.299 * r + 0.587 * g + 0.114 * b;
-                            const charIndex = Math.floor((luma / 255) * (ramp.length - 1));
-                            
-                            const hex = "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
-                            if (hex !== lastColor) {
-                                if (lastColor !== "") asciiHTML += "</span>";
-                                asciiHTML += `<span style="color:${hex}">`;
-                                lastColor = hex;
-                            }
-                            asciiHTML += ramp[charIndex];
-                        }
-                        asciiHTML += "\n";
-                    }
-                    if (lastColor !== "") asciiHTML += "</span>";
-                    asciiContainer.innerHTML = asciiHTML;
+                    asciiLines.push(rowStr);
                 }
+                
+                asciiContainer.textContent = asciiLines.join('\n');
             }
         }
 
         setLanguage('pt');
+        loadMenuBG();
         showPanel('panel-menu');
         animate();
 
