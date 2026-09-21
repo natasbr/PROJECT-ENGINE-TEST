@@ -1,529 +1,1613 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="h-full bg-slate-950 text-slate-100">
+<html lang="pt-BR">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>VR Fleet & Inventory Manager</title>
-  <meta name="description" content="Gerenciador de frotas de Realidade Virtual e equipamentos para GitHub Pages" />
-  <!-- Tailwind CSS CDN -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  <!-- QRCode.js CDN for standalone labels -->
-  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
-  <!-- Lucide Icons CDN -->
-  <script src="https://unpkg.com/lucide@latest"></script>
-  <!-- Firebase SDKs CDN -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
-  <style>
-    @media print {
-      body * { visibility: hidden; }
-      #print-area, #print-area * { visibility: visible; }
-      #print-area { position: absolute; left: 0; top: 0; width: 100%; }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>VR Estoque</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Ctext x='32' y='42' font-family='monospace' font-size='30' font-weight='bold' fill='%2300ff00' text-anchor='middle'%3EVR%3C/text%3E%3C/svg%3E">
+<style>
+:root{
+  --g:#0f0; --g-dim:#4fc04f; --g-line:#0b7a0b; --g-faint:#0a3d0a;
+  --bg:#000; --bg1:#001400; --bg2:#002200;
+  --blue:#00aaff; --blue-bg:#003366;
+  --amber:#ffb000; --amber-bg:#3a2800;
+  --red:#ff5555; --red-bg:#440000;
+  --gray:#8a8a8a;
+  --font:'Courier New',Courier,monospace;
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+html.lock,html.lock body{overflow:hidden}
+body{margin:0;background:var(--bg);color:var(--g);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-text-size-adjust:100%;color-scheme:dark}
+button,input,select,textarea{font:inherit;color:inherit}
+b,strong{font-weight:bold}
+small{font-size:12px}
+.dim{color:var(--g-dim)}
+.hide{display:none!important}
+.pre{white-space:pre-wrap}
+::-webkit-scrollbar{width:10px;height:10px}
+::-webkit-scrollbar-track{background:#001100}
+::-webkit-scrollbar-thumb{background:var(--g)}
+:focus-visible{outline:2px dashed #b6ffb6;outline-offset:2px}
+
+/* ---------- estrutura do app ---------- */
+#app{display:flex;flex-direction:column;height:100vh;height:100dvh}
+.top{flex:none;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:max(env(safe-area-inset-top),8px) 14px 8px;border-bottom:1px solid var(--g-line)}
+.logo{font-size:19px;font-weight:bold;text-shadow:0 0 6px var(--g)}
+.cursor{animation:blink 1.1s steps(1) infinite;font-weight:bold}
+@keyframes blink{50%{opacity:0}}
+.top-right{display:flex;align-items:center;gap:10px}
+.sync{font-size:12px;display:flex;align-items:center;gap:6px;color:var(--g-dim);white-space:nowrap}
+.sync i{font-style:normal}
+.sync.ok i{color:var(--g)}
+.sync.wait i{color:var(--amber)}
+.sync.off i,.sync.err i{color:var(--red)}
+#banner{flex:none}
+.banner{padding:8px 14px;border-bottom:1px solid var(--amber);background:var(--amber-bg);color:var(--amber);font-size:13px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.banner.err{border-color:var(--red);background:var(--red-bg);color:var(--red)}
+.tabs{flex:none;display:flex;border-bottom:1px solid var(--g-line)}
+.tabs button{flex:1;padding:11px 6px;background:transparent;border:0;border-bottom:3px solid transparent;color:var(--g-dim);cursor:pointer;font-weight:bold;display:flex;gap:8px;align-items:center;justify-content:center}
+.tabs button .gl{font-size:16px}
+.tabs button:hover{background:rgba(0,255,0,.06)}
+.tabs button.active{color:var(--g);border-bottom-color:var(--g);background:rgba(0,255,0,.08);text-shadow:0 0 6px var(--g)}
+#main{flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:14px}
+.view{display:none;max-width:1100px;margin:0 auto}
+.view.active{display:block}
+@media(max-width:700px){
+  .tabs{order:3;border-bottom:0;border-top:1px solid var(--g);padding-bottom:env(safe-area-inset-bottom);background:#000}
+  .tabs button{flex-direction:column;gap:2px;font-size:12px;padding:8px 2px;border-bottom:0;border-top:3px solid transparent}
+  .tabs button.active{border-top-color:var(--g)}
+  #main{padding:10px}
+}
+
+/* ---------- blocos ---------- */
+.stack{display:flex;flex-direction:column;gap:14px}
+.grid2{display:grid;grid-template-columns:1fr;gap:14px}
+@media(min-width:900px){.grid2{grid-template-columns:minmax(0,1.05fr) minmax(0,.95fr);align-items:start}}
+.card{border:1px solid var(--g);background:rgba(0,20,0,.85);border-radius:8px;padding:14px}
+.card.glow{box-shadow:0 0 18px rgba(0,255,0,.25)}
+.h2{margin:0 0 10px;font-size:16px;font-weight:bold;text-shadow:0 0 5px var(--g);display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.h2 .t::before{content:'> ';color:var(--g-dim)}
+.h3{margin:14px 0 8px;font-size:14px;font-weight:bold;color:var(--g-dim);border-bottom:1px dashed var(--g-faint);padding-bottom:4px}
+.empty{padding:18px 10px;text-align:center;color:var(--g-dim);border:1px dashed var(--g-faint);border-radius:6px}
+.empty b{color:var(--g);display:block;margin-bottom:4px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.row.sb{justify-content:space-between}
+.grow1{flex:1;min-width:0}
+
+/* ---------- controles ---------- */
+.btn{background:var(--bg2);color:var(--g);border:1px solid var(--g);padding:9px 14px;min-height:40px;cursor:pointer;font-weight:bold;transition:background .15s,color .15s;border-radius:2px}
+.btn:hover:not(:disabled){background:var(--g);color:#000}
+.btn:disabled{background:#222;color:#777;border-color:#555;cursor:not-allowed}
+.btn.sm{padding:4px 10px;min-height:32px;font-size:13px}
+.btn.pri{background:#004a00;box-shadow:0 0 8px rgba(0,255,0,.35)}
+.btn.blue{background:var(--blue-bg);border-color:var(--blue);color:var(--blue)}
+.btn.blue:hover:not(:disabled){background:var(--blue);color:#000}
+.btn.danger{background:var(--red-bg);border-color:var(--red);color:var(--red)}
+.btn.danger:hover:not(:disabled){background:var(--red);color:#000}
+.btn.ghost{background:transparent}
+.btn.full{width:100%}
+input[type=text],input[type=number],input[type=date],input[type=search],input[type=password],input[type=email],select,textarea{background:#000;color:var(--g);border:1px solid var(--g);padding:9px 10px;width:100%;min-height:40px;outline:none;border-radius:0;font-size:16px}
+textarea{min-height:76px;resize:vertical}
+input:focus,select:focus,textarea:focus{box-shadow:0 0 0 1px var(--g),0 0 10px rgba(0,255,0,.45)}
+input::placeholder,textarea::placeholder{color:#2c8a2c}
+input[type=date]::-webkit-calendar-picker-indicator{filter:invert(58%) sepia(96%) saturate(700%) hue-rotate(75deg)}
+input[type=checkbox]{width:20px;height:20px;accent-color:#0f0;flex:none}
+select option{background:#000;color:#0f0}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field>label,.lbl{font-size:12px;color:var(--g-dim)}
+.field .hint{font-size:11px;color:var(--g-dim)}
+.fgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+.field.full{grid-column:1/-1}
+.check{display:flex;gap:10px;align-items:center;cursor:pointer}
+.toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.toolbar>.grow1{min-width:150px}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--g-line);background:#000;color:var(--g);padding:4px 10px;cursor:pointer;font-size:13px;border-radius:2px;min-height:30px}
+.chip:hover{border-color:var(--g)}
+.chip.on{background:var(--g);color:#000;font-weight:bold}
+.chip .n{color:var(--g-dim);margin-left:4px}
+.chip.on .n{color:#003300}
+.chip.x{border-color:var(--blue);color:var(--blue)}
+
+/* ---------- selos e barras ---------- */
+.badge{display:inline-block;border:1px solid var(--g);padding:0 6px;font-size:12px;line-height:1.5;white-space:nowrap;border-radius:2px}
+.st-disponivel,.ph-andamento{border-color:var(--g);color:var(--g)}
+.st-manutencao{border-color:var(--amber);color:var(--amber)}
+.st-danificado,.st-perdido,.st-cancelado{border-color:var(--red);color:var(--red)}
+.st-baixado,.ph-passado{border-color:var(--gray);color:var(--gray)}
+.st-planejado,.ph-proximo{border-color:var(--blue);color:var(--blue)}
+.st-confirmado{border-color:var(--g);color:var(--g)}
+.tag{display:inline-block;border:1px solid var(--blue);color:var(--blue);padding:0 6px;font-size:12px;background:rgba(0,102,204,.12);border-radius:2px}
+.tag.rm{cursor:pointer}
+.cond{white-space:nowrap;font-size:12px}
+.cond .m{letter-spacing:1px}
+.c5,.c4{color:var(--g)}.c3{color:#9ad86a}.c2{color:var(--amber)}.c1{color:var(--red)}
+.bar{font-family:var(--font);line-height:1;white-space:nowrap;overflow:hidden;letter-spacing:0}
+.bar .bf{color:var(--g)}.bar .br{color:var(--blue)}.bar .bu{color:var(--amber)}.bar .bo{color:#1c5a1c}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--g-dim)}
+.legend .bf{color:var(--g)}.legend .br{color:var(--blue)}.legend .bu{color:var(--amber)}
+.warn{color:var(--amber)}.bad{color:var(--red)}.good{color:var(--g)}
+
+/* ---------- geral ---------- */
+.hero-num{font-size:clamp(34px,10vw,54px);font-weight:bold;line-height:1;text-shadow:0 0 12px var(--g)}
+.hero-num small{font-size:clamp(14px,3.6vw,18px);text-shadow:none;color:var(--g-dim);font-weight:normal}
+.hero-bar{font-size:clamp(14px,4.6vw,22px);margin:10px 0 8px}
+.trio{display:flex;gap:16px;flex-wrap:wrap;margin-top:8px}
+.trio div{display:flex;flex-direction:column}
+.trio b{font-size:18px}
+.trio span{font-size:12px;color:var(--g-dim)}
+.grp{border:1px solid var(--g-faint);padding:10px;background:#000;border-radius:4px}
+.grp+.grp{margin-top:8px}
+.grp.sel{border-color:var(--g)}
+.grp-top{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+.grp-top b{overflow:hidden;text-overflow:ellipsis}
+.grp .bar{font-size:14px;margin:6px 0 4px}
+.grp-sub{font-size:12px;color:var(--g-dim);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.need{display:flex;gap:6px;align-items:center;font-size:12px}
+.need input{width:64px;min-height:30px;padding:2px 6px;font-size:14px}
+.need-res{min-width:90px}
+.cal-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px}
+.cal-head b{text-transform:capitalize}
+.cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:3px}
+.dow{text-align:center;font-size:11px;color:var(--g-dim)}
+.cday{min-height:52px;border:1px solid var(--g-faint);background:#000;color:var(--g);padding:2px 3px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;cursor:pointer;border-radius:2px}
+.cday:hover{border-color:var(--g)}
+.cday .dn{font-size:10px;align-self:flex-start;color:var(--g-dim);line-height:1}
+.cday .fv{font-size:17px;font-weight:bold;line-height:1}
+.cday .ev{font-size:9px;height:10px;line-height:10px;color:var(--blue)}
+.cday.out{opacity:.35}
+.cday.today{outline:1px dashed var(--g);outline-offset:-2px}
+.cday.inr{background:#002a00;border-color:var(--g-line)}
+.cday.sel{background:#003a00;border-color:var(--g);box-shadow:0 0 8px rgba(0,255,0,.6)}
+.f-ok{color:var(--g)}.f-low{color:var(--amber)}.f-zero{color:var(--red)}.f-na{color:#245c24}
+.erow{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:#000;border:1px solid var(--g-faint);padding:9px 10px;cursor:pointer;color:var(--g);border-radius:4px}
+.erow+.erow,.irow+.irow{margin-top:8px}
+.erow:hover,.irow:hover{border-color:var(--g);background:#001a00}
+.edate{text-align:center;min-width:54px;border-right:1px dashed var(--g-faint);padding-right:10px}
+.edate b{font-size:16px;display:block;line-height:1.1}
+.edate small{color:var(--g-dim)}
+.emain{min-width:0;display:flex;flex-direction:column;gap:2px}
+.emain b,.imain b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.emain small,.imain small{color:var(--g-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.emeta,.imeta{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:12px;text-align:right}
+.alert{border:1px solid var(--amber);color:var(--amber);background:var(--amber-bg);padding:8px 10px;border-radius:4px;font-size:13px;cursor:pointer;width:100%;text-align:left}
+.alert.red{border-color:var(--red);color:var(--red);background:var(--red-bg)}
+.alert+.alert{margin-top:6px}
+
+/* ---------- categorias ---------- */
+.cat-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--g-line);font-weight:bold}
+.cat-h:first-child{margin-top:0}
+.cat-h small{color:var(--g-dim);font-weight:normal}
+.irow{display:grid;grid-template-columns:52px 1fr auto;gap:10px;align-items:center;width:100%;text-align:left;background:#000;border:1px solid var(--g-faint);padding:8px;cursor:pointer;color:var(--g);border-radius:4px}
+.thumb{width:52px;height:52px;border:1px solid var(--g-line);background:#001100;display:flex;align-items:center;justify-content:center;color:#1f6f1f;overflow:hidden;font-size:12px;flex:none}
+.thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.imain{min-width:0;display:flex;flex-direction:column;gap:2px}
+.tagline{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
+
+/* ---------- janelas ---------- */
+.modal{position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.85);display:flex;align-items:center;justify-content:center;padding:12px}
+.sheet{width:100%;max-width:780px;max-height:calc(100vh - 24px);max-height:calc(100dvh - 24px);display:flex;flex-direction:column;background:#000d00;border:2px solid var(--g);box-shadow:0 0 22px rgba(0,255,0,.35);border-radius:10px;overflow:hidden}
+.sheet.small{max-width:440px}
+.sheet.wide{max-width:960px}
+.sheet-head{flex:none;display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--g-line)}
+.sheet-head h2{margin:0;font-size:16px;text-shadow:0 0 5px var(--g);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheet-body{flex:1;min-height:0;overflow-y:auto;padding:14px;-webkit-overflow-scrolling:touch}
+.sheet-foot{flex:none;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;padding:10px 14px calc(10px + env(safe-area-inset-bottom));border-top:1px solid var(--g-line);background:#000d00}
+@media(max-width:640px){
+  .modal{padding:0;align-items:stretch}
+  .sheet,.sheet.small,.sheet.wide{max-width:none;max-height:none;height:100vh;height:100dvh;border-radius:0;border-width:0;border-top:1px solid var(--g)}
+  .sheet.small{height:auto;max-height:100dvh;align-self:flex-end;border-top:2px solid var(--g)}
+  .sheet-foot .btn{flex:1 1 auto}
+}
+.toasts,#toasts{position:fixed;left:0;right:0;bottom:calc(76px + env(safe-area-inset-bottom));z-index:300;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none;padding:0 12px}
+@media(min-width:701px){#toasts{bottom:84px}}
+.toast{background:#001a00;border:1px solid var(--g);padding:8px 14px;box-shadow:0 0 12px rgba(0,255,0,.4);max-width:520px;border-radius:4px}
+.toast.warn{border-color:var(--amber);color:var(--amber);background:var(--amber-bg)}
+.toast.err{border-color:var(--red);color:var(--red);background:var(--red-bg)}
+
+/* ---------- detalhe do item ---------- */
+.kv{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:8px 14px}
+.kv div{min-width:0}
+.kv span{display:block;font-size:11px;color:var(--g-dim)}
+.kv b{display:block;overflow-wrap:anywhere}
+.photos{display:flex;gap:8px;overflow-x:auto;padding-bottom:6px}
+.photos .ph{flex:none;width:120px;height:120px;border:1px solid var(--g-line);background:#001100;position:relative;cursor:pointer;overflow:hidden}
+.photos .ph img{width:100%;height:100%;object-fit:cover;display:block}
+.photos .ph .x{position:absolute;top:2px;right:2px;background:#000;border:1px solid var(--red);color:var(--red);padding:0 6px;cursor:pointer;min-height:26px}
+.photos .ph .cv{position:absolute;left:2px;bottom:2px;background:#000;border:1px solid var(--g);color:var(--g);font-size:11px;padding:0 4px;cursor:pointer}
+.photos .add{display:flex;align-items:center;justify-content:center;text-align:center;color:var(--g);border-style:dashed}
+.viewer{position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.95);display:flex;align-items:center;justify-content:center;padding:10px;cursor:zoom-out}
+.viewer img{max-width:100%;max-height:100%;object-fit:contain;border:1px solid var(--g)}
+.tl{border-left:2px solid var(--g-line);margin-left:6px;padding-left:12px}
+.tl .it{position:relative;padding-bottom:10px}
+.tl .it::before{content:'';position:absolute;left:-17px;top:5px;width:8px;height:8px;background:var(--g)}
+.tl .it small{color:var(--g-dim)}
+.qrbox{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.qrbox .qr{width:132px;height:132px;background:#fff;padding:0;flex:none}
+.qrbox .qr svg{width:100%;height:100%;display:block}
+.qrbox .acts{display:flex;flex-direction:column;gap:6px;min-width:150px;flex:1}
+.qrbox .link{font-size:11px;color:var(--g-dim);overflow-wrap:anywhere}
+.sect{border:1px solid var(--g-faint);border-radius:6px;padding:12px;background:rgba(0,20,0,.55)}
+.sect+.sect{margin-top:12px}
+.sect>.h3:first-child{margin-top:0}
+.tagsin{display:flex;flex-wrap:wrap;gap:6px;border:1px solid var(--g);padding:6px;background:#000;min-height:44px;align-items:center}
+.tagsin input{flex:1;min-width:120px;border:0;padding:4px;min-height:30px;box-shadow:none!important}
+.mrow{display:flex;justify-content:space-between;gap:8px;align-items:flex-start;border-bottom:1px dashed var(--g-faint);padding:6px 0}
+.mrow:last-child{border-bottom:0}
+.crow{display:grid;grid-template-columns:1fr 1.4fr auto;gap:6px;margin-bottom:6px}
+.actionbar{position:sticky;bottom:-14px;margin:14px -14px -14px;padding:10px 14px;background:#000d00;border-top:1px solid var(--g-line);display:flex;gap:8px;flex-wrap:wrap;z-index:5}
+.sheet-body .actionbar{bottom:-14px}
+@media(max-width:700px){#main .actionbar{bottom:-10px;margin:14px -10px -10px}}
+
+/* ---------- evento: equipamentos ---------- */
+.arow{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;border:1px solid var(--g-faint);padding:6px 8px;background:#000;border-radius:4px}
+.arow+.arow{margin-top:6px}
+.arow.bad{border-color:var(--red)}
+.pick{max-height:280px;overflow-y:auto;border:1px solid var(--g-faint);padding:6px;background:#000}
+input[type=number].qty,.qty{width:70px;min-height:32px;padding:2px 6px;font-size:14px}
+.row>.qty{flex:none}
+.sumtbl{width:100%;border-collapse:collapse;font-size:13px}
+.sumtbl td,.sumtbl th{border-bottom:1px dashed var(--g-faint);padding:4px 6px;text-align:right}
+.sumtbl td:first-child,.sumtbl th:first-child{text-align:left}
+.sumtbl th{color:var(--g-dim);font-weight:normal}
+.codebox{background:#000;border:1px solid var(--g-line);padding:10px;overflow-x:auto;font-size:12px;white-space:pre}
+
+/* ---------- etiquetas / impressão ---------- */
+.label-sheet{display:flex;flex-wrap:wrap;gap:3mm;align-items:flex-start}
+.label{background:#fff;color:#000;border:1px dashed #888;padding:2mm;display:flex;gap:2.5mm;align-items:center;break-inside:avoid;font-family:'Courier New',Courier,monospace;width:var(--lw,70mm)}
+.label .lq{width:var(--lq,30mm);height:var(--lq,30mm);flex:none}
+.label .lq svg{width:100%;height:100%;display:block}
+.label .lt{display:flex;flex-direction:column;min-width:0;font-size:var(--lf,9pt);line-height:1.25;overflow-wrap:anywhere}
+.label .lt b{font-size:calc(var(--lf,9pt) + 1pt)}
+.ls-s{--lw:52mm;--lq:22mm;--lf:7pt}
+.ls-m{--lw:70mm;--lq:30mm;--lf:9pt}
+.ls-l{--lw:95mm;--lq:45mm;--lf:11pt}
+#print-portal{display:none}
+@media print{
+  html,body{height:auto!important;background:#fff!important;overflow:visible!important}
+  #app,#modal-root,#toasts{display:none!important}
+  #print-portal{display:block!important}
+  @page{margin:8mm}
+}
+@media(prefers-reduced-motion:reduce){.cursor{animation:none}*{transition:none!important}}
+</style>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 </head>
-<body class="min-h-full flex flex-col font-sans antialiased selection:bg-cyan-500 selection:text-white">
-  <div id="app-container" class="flex-1 flex flex-col max-w-7xl w-full mx-auto p-3 sm:p-6 pb-20">
-    <!-- Header -->
-    <header class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-800">
-      <div>
-        <div class="flex items-center gap-2">
-          <span class="p-2 bg-cyan-500/20 text-cyan-400 rounded-lg border border-cyan-500/30">🥽</span>
-          <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-white">VR Fleet Manager</h1>
-        </div>
-        <p class="text-xs sm:text-sm text-slate-400 mt-1">Gestão de Headsets VR, Baterias, Cabos e Agendamento de Eventos</p>
-      </div>
-      <div class="flex items-center gap-2">
-        <span id="sync-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
-          <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-          Pronto para GitHub Pages
-        </span>
-      </div>
-    </header>
+<body>
+<div id="app">
+  <header class="top">
+    <div class="brand"><span class="logo">VR ESTOQUE</span><span class="cursor logo">_</span></div>
+    <div class="top-right">
+      <span id="sync" class="sync wait"><i>◌</i><span>Conectando…</span></span>
+      <button class="btn sm" data-act="settings" aria-label="Configurações" title="Configurações">⚙</button>
+    </div>
+  </header>
+  <div id="banner"></div>
+  <nav class="tabs" id="tabs" role="tablist">
+    <button data-tab="geral" role="tab"><span class="gl">◈</span><span>Geral</span></button>
+    <button data-tab="cadastrar" role="tab"><span class="gl">+</span><span>Cadastrar</span></button>
+    <button data-tab="categorias" role="tab"><span class="gl">≡</span><span>Categorias</span></button>
+    <button data-tab="eventos" role="tab"><span class="gl">▦</span><span>Eventos</span></button>
+  </nav>
+  <main id="main">
+    <section id="view-geral" class="view"></section>
+    <section id="view-cadastrar" class="view"></section>
+    <section id="view-categorias" class="view"></section>
+    <section id="view-eventos" class="view"></section>
+  </main>
+</div>
+<div id="modal-root"></div>
+<div id="toasts"></div>
+<div id="print-portal"></div>
+<script>
+(function(){
+'use strict';
 
-    <!-- Navigation Tabs -->
-    <nav class="flex border-b border-slate-800 mt-4 overflow-x-auto no-scrollbar gap-1 sm:gap-2">
-      <button onclick="switchTab('general')" id="tab-btn-general" class="tab-btn px-4 py-3 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 whitespace-nowrap">
-        📊 Visão Geral
-      </button>
-      <button onclick="switchTab('register')" id="tab-btn-register" class="tab-btn px-4 py-3 text-sm font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">
-        ➕ Cadastrar Item
-      </button>
-      <button onclick="switchTab('categories')" id="tab-btn-categories" class="tab-btn px-4 py-3 text-sm font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">
-        📦 Categorias & Estoque
-      </button>
-      <button onclick="switchTab('events')" id="tab-btn-events" class="tab-btn px-4 py-3 text-sm font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap">
-        📅 Eventos & Alocação
-      </button>
-    </nav>
+/* =====================================================================
+   VR ESTOQUE — app de gestão de equipamentos (arquivo único)
+   Dados: Firebase Firestore (mesmo projeto do Dream Engine),
+   mas SOMENTE nas coleções vrm_* abaixo. A galeria (gallery_objects)
+   não é lida nem alterada por este app.
+   ===================================================================== */
 
-    <!-- Content Sections -->
-    <main class="mt-6 flex-1">
-      <div id="view-content"></div>
-    </main>
-  </div>
+/* Configuração do Firebase — cópia exata do projeto que você enviou */
+const firebaseConfig = {
+  apiKey: "AIzaSyAnXII96RwOSs7p-cdvmch7_S3A2-rcLEc",
+  authDomain: "project-engine-2f962.firebaseapp.com",
+  projectId: "project-engine-2f962",
+  storageBucket: "project-engine-2f962.firebasestorage.app",
+  messagingSenderId: "17396805461",
+  appId: "1:17396805461:web:11463e56e27a760eaec9dc",
+  measurementId: "G-EDTS1HS7T8"
+};
 
-  <!-- Print Area (hidden on screen, active on print) -->
-  <div id="print-area" class="hidden"></div>
+/* Coleções exclusivas deste app (não cruzam com a galeria online) */
+const COL = { items:'vrm_items', events:'vrm_events', photos:'vrm_photos', meta:'vrm_meta' };
 
-  <script>
-    // Initial data injected from app state
-    let items = [];
-    let events = [];
-    let fbConfig = null;
-    let currentTab = 'general';
-    let db = null;
+/* Login opcional. false = abre direto (mais simples).
+   true  = exige e-mail/senha do Firebase Auth (mais seguro; veja o guia). */
+const REQUIRE_LOGIN = false;
 
-    // Save to localStorage
-    function persist() {
-      localStorage.setItem('vr_fleet_items_data', JSON.stringify(items));
-      localStorage.setItem('vr_fleet_events_data', JSON.stringify(events));
-      renderCurrentView();
+/* ---------- utilitários ---------- */
+const $ = (s,r=document)=>r.querySelector(s);
+const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
+const esc = s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const norm = s=>String(s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+const num = v=>{const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:0;};
+const sleep = ms=>new Promise(r=>setTimeout(r,ms));
+const pad = n=>String(n).padStart(2,'0');
+const iso = d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const todayISO = ()=>iso(new Date());
+const parseISO = s=>{const [y,m,d]=s.split('-').map(Number);return new Date(y,m-1,d,12);};
+const addDays = (s,n)=>{const d=parseISO(s);d.setDate(d.getDate()+n);return iso(d);};
+const diffDays = (a,b)=>Math.round((parseISO(b)-parseISO(a))/864e5);
+const eachDay = (a,b)=>{const out=[];let c=a,g=0;while(c<=b&&g++<800){out.push(c);c=addDays(c,1);}return out;};
+const fmtDate = s=>{if(!s)return '';const [y,m,d]=s.split('-');return d+'/'+m+'/'+y;};
+const MONTHS = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const MON3 = ['jan','fev','mar','abr','mai','jun','jul','ago','set','out','nov','dez'];
+const fmtShort = s=>{const [y,m,d]=s.split('-').map(Number);return d+' '+MON3[m-1];};
+const fmtRange = (a,b)=>a===b?fmtDate(a):fmtDate(a)+' a '+fmtDate(b);
+const money = v=>num(v).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+const debounce=(fn,ms)=>{let t;return(...a)=>{clearTimeout(t);t=setTimeout(()=>fn(...a),ms);};};
+const clone = o=>JSON.parse(JSON.stringify(o));
+const slug = s=>norm(s).replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'item';
+
+/* ---------- listas fixas ---------- */
+const STATUS = [['disponivel','Disponível'],['manutencao','Em manutenção'],['danificado','Danificado'],['perdido','Perdido'],['baixado','Baixado (descartado)']];
+const CONDITION = [['novo','Novo'],['otimo','Ótimo'],['bom','Bom'],['regular','Regular'],['ruim','Ruim']];
+const COND_LEVEL = {novo:5,otimo:4,bom:3,regular:2,ruim:1};
+const EV_STATUS = [['planejado','Planejado'],['confirmado','Confirmado'],['cancelado','Cancelado']];
+const MAINT_TYPES = ['Preventiva','Corretiva','Limpeza','Bateria','Software / firmware','Peças / reparo','Outro'];
+const label = (list,k)=>{const f=list.find(x=>x[0]===k);return f?f[1]:(k||'');};
+
+/* =====================================================================
+   CAMPOS DO ITEM — para adicionar um detalhe novo, é só incluir UMA
+   linha aqui. Ele aparece sozinho no formulário, no detalhe e é salvo.
+   Opções: sec (seção), key, label, type (text|number|date|select|textarea),
+   options, req, suggest (autocompletar), showIf(draft), reflow (redesenha
+   o formulário ao mudar), ph, hint, fmt(valor)
+   ===================================================================== */
+const ITEM_FIELDS = [
+  {sec:'Identificação', key:'name',      label:'Nome do item', type:'text', req:true, ph:'Ex.: Quest 3 nº 07'},
+  {sec:'Identificação', key:'model',     label:'Modelo / tipo', type:'text', suggest:true, ph:'Ex.: Meta Quest 3 128 GB', hint:'Itens com o mesmo modelo são somados na tela Geral'},
+  {sec:'Identificação', key:'brand',     label:'Marca', type:'text', suggest:true, ph:'Ex.: Meta, BOBOVR'},
+  {sec:'Identificação', key:'serial',    label:'Nº de série', type:'text'},
+  {sec:'Identificação', key:'assetTag',  label:'Patrimônio / ID interno', type:'text'},
+  {sec:'Estoque', key:'mode',      label:'Controle', type:'select', options:[['unit','Unidade única'],['qty','Por quantidade (lote)']], reflow:true, hint:'Use "lote" para itens sem série individual (cabos, canetas…)'},
+  {sec:'Estoque', key:'qty',       label:'Quantidade total', type:'number', min:1, step:'1', showIf:d=>d.mode==='qty'},
+  {sec:'Estoque', key:'unavailQty',label:'Quantidade indisponível', type:'number', min:0, step:'1', showIf:d=>d.mode==='qty', hint:'Quebradas ou em manutenção'},
+  {sec:'Estoque', key:'status',    label:'Situação', type:'select', options:STATUS, reflow:true},
+  {sec:'Estoque', key:'backOn',    label:'Volta a ficar disponível em', type:'date', showIf:d=>d.status==='manutencao'||d.status==='danificado', hint:'Opcional. Libera o item nas datas a partir deste dia'},
+  {sec:'Estoque', key:'condition', label:'Estado de conservação', type:'select', options:CONDITION},
+  {sec:'Estoque', key:'location',  label:'Guardado em', type:'text', suggest:true, ph:'Ex.: Armário 2, Caixa azul'},
+  {sec:'Compra',  key:'acquiredOn',label:'Data de aquisição', type:'date'},
+  {sec:'Compra',  key:'value',     label:'Valor pago (R$)', type:'number', min:0, step:'0.01', fmt:v=>money(v)},
+  {sec:'Compra',  key:'supplier',  label:'Fornecedor', type:'text', suggest:true},
+  {sec:'Notas',   key:'notes',     label:'Observações', type:'textarea'}
+];
+/* Ordem das seções do formulário. "@" = blocos especiais. */
+const FORM_LAYOUT = ['Identificação','@tags','Estoque','Compra','@photos','@maintenance','Notas','@custom','@qr'];
+const DEFAULT_ITEM = ()=>({name:'',model:'',brand:'',serial:'',assetTag:'',mode:'unit',qty:1,unavailQty:0,status:'disponivel',backOn:'',condition:'bom',location:'',acquiredOn:'',value:'',supplier:'',notes:'',tags:[],custom:[],maintenance:[],qrEnabled:true});
+const PERSIST_KEYS = ITEM_FIELDS.map(f=>f.key).concat(['tags','custom','maintenance','qrEnabled']);
+
+/* ---------- estado ---------- */
+const S = {
+  items:[], events:[], itemsById:new Map(), meta:{},
+  loaded:{items:false,events:false},
+  tab:'geral', createDraft:null, photoCache:new Map(),
+  sync:{fromCache:true,pending:false,online:navigator.onLine},
+  ui:{scope:'auto', date:todayISO(), end:'', month:todayISO().slice(0,7), need:{}, q:'', cstatus:'all', csort:'name', ctag:'all', cview:'group', evFilter:'ativos', evq:''},
+  user:null, renderPending:false, pendingItem:null
+};
+(function loadPrefs(){try{const p=JSON.parse(localStorage.getItem('vrm_prefs'))||{};['scope','cview','evFilter','csort'].forEach(k=>{if(p[k])S.ui[k]=p[k];});}catch(e){}})();
+const savePrefs = ()=>{try{const u=S.ui;localStorage.setItem('vrm_prefs',JSON.stringify({scope:u.scope,cview:u.cview,evFilter:u.evFilter,csort:u.csort}));}catch(e){}};
+
+/* ---------- Firebase ---------- */
+let db=null, auth=null, fbError=null;
+try{
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  if(REQUIRE_LOGIN) auth = firebase.auth();
+  try{ db.enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}
+}catch(e){ fbError=e; console.error('Firebase:',e); }
+
+/* ---------- regras de disponibilidade ---------- */
+const totalQty = it=>it.mode==='qty'?Math.max(0,Math.floor(num(it.qty))):1;
+const downQty = it=>it.mode==='qty'?Math.min(totalQty(it),Math.max(0,Math.floor(num(it.unavailQty)))):0;
+const groupKey = it=>((it.model||'').trim()||(it.name||'').trim()||'Sem nome');
+
+/* quantas unidades do item podem ser usadas no dia d (ignorando eventos) */
+function usableQty(it,d){
+  const tot=totalQty(it);
+  if(it.status==='disponivel') return tot-downQty(it);
+  if((it.status==='manutencao'||it.status==='danificado') && it.backOn && d>=it.backOn) return tot-downQty(it);
+  return 0;
+}
+/* quantas unidades do item estão reservadas em eventos no dia d.
+   ov = {exclude:eventId, extra:Map, range:[a,b]} simula um rascunho de evento */
+function reservedFor(itemId,d,ov){
+  let sum=0;
+  for(const ev of S.events){
+    if(ev.status==='cancelado') continue;
+    if(ov && ov.exclude===ev.id) continue;
+    if(d>=ev.start && d<=ev.end) sum+=ev._m.get(itemId)||0;
+  }
+  if(ov && ov.extra && d>=ov.range[0] && d<=ov.range[1]) sum+=ov.extra.get(itemId)||0;
+  return sum;
+}
+function dayStats(items,d,ov){
+  let T=0,U=0,R=0,F=0;
+  for(const it of items){
+    const tot=totalQty(it), us=usableQty(it,d), used=Math.min(reservedFor(it.id,d,ov),us);
+    T+=tot; U+=tot-us; R+=used; F+=us-used;
+  }
+  return {T,U,R,F};
+}
+/* pior dia do intervalo (o que tem menos itens livres) */
+function rangeStats(items,a,b,ov){
+  let worst=null;
+  for(const d of eachDay(a,b)){const s=dayStats(items,d,ov); if(!worst||s.F<worst.F) worst=s;}
+  return worst||{T:0,U:0,R:0,F:0};
+}
+function eventConflicts(ev){
+  const out=[]; if(ev.status==='cancelado') return out;
+  for(const [itemId] of ev._m){
+    const it=S.itemsById.get(itemId);
+    if(!it){out.push({itemId,missing:true,days:[]});continue;}
+    const bad=eachDay(ev.start,ev.end).filter(d=>reservedFor(itemId,d)>usableQty(it,d));
+    if(bad.length) out.push({itemId,days:bad});
+  }
+  return out;
+}
+const evCount = ev=>(ev.alloc||[]).reduce((s,a)=>s+num(a.qty),0);
+function evPhase(ev){const t=todayISO();return ev.end<t?'passado':ev.start>t?'proximo':'andamento';}
+const PHASE_LABEL={passado:'Passado',proximo:'Próximo',andamento:'Em andamento'};
+function evSummary(ev,max=3){
+  const m=new Map();
+  for(const a of ev.alloc||[]){const it=S.itemsById.get(a.itemId);const k=it?groupKey(it):'(item removido)';m.set(k,(m.get(k)||0)+num(a.qty));}
+  const arr=Array.from(m,([k,n])=>n+'× '+k);
+  return arr.length>max?arr.slice(0,max).join(' · ')+' · +'+(arr.length-max):arr.join(' · ');
+}
+
+/* ---------- tags / categorias / grupos ---------- */
+function tagIndex(){
+  const m=new Map();
+  for(const it of S.items) for(const t of it.tags||[]){
+    const k=t.toLowerCase(); if(!m.has(k)) m.set(k,{name:t,units:0,items:0});
+    const e=m.get(k); e.units+=totalQty(it); e.items++;
+  }
+  return Array.from(m.values()).sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+}
+function canonTag(t){
+  t=String(t||'').trim().replace(/\s+/g,' '); if(!t) return '';
+  const f=tagIndex().find(x=>x.name.toLowerCase()===t.toLowerCase()); return f?f.name:t;
+}
+const hasTag = (it,t)=>(it.tags||[]).some(x=>x.toLowerCase()===String(t).toLowerCase());
+function scopeItems(scope){
+  if(!scope||scope==='all') return S.items;
+  const i=scope.indexOf(':'), t=scope.slice(0,i), k=scope.slice(i+1);
+  if(t==='tag') return S.items.filter(it=>hasTag(it,k));
+  if(t==='model') return S.items.filter(it=>groupKey(it)===k);
+  return S.items;
+}
+function groupsOf(items){
+  const m=new Map();
+  for(const it of items){const k=groupKey(it); if(!m.has(k)) m.set(k,[]); m.get(k).push(it);}
+  return Array.from(m,([key,list])=>({key,items:list})).sort((a,b)=>a.key.localeCompare(b.key,'pt'));
+}
+function resolveScope(){
+  if(S.ui.scope!=='auto') return S.ui.scope;
+  const tags=tagIndex();
+  const pref=tags.find(t=>['vr','headset','headsets','oculos','quest'].includes(norm(t.name)));
+  if(pref) return 'tag:'+pref.name;
+  tags.sort((a,b)=>b.items-a.items);
+  return tags.length?'tag:'+tags[0].name:'all';
+}
+function distinct(key){
+  const s=new Set(); for(const it of S.items){const v=(it[key]||'').trim(); if(v) s.add(v);}
+  return Array.from(s).sort((a,b)=>a.localeCompare(b,'pt'));
+}
+
+/* ---------- normalização de dados vindos do Firestore ---------- */
+function normItem(id,d){
+  const it=Object.assign(DEFAULT_ITEM(),d||{}); it.id=id;
+  if(!Array.isArray(it.tags)) it.tags=[]; if(!Array.isArray(it.custom)) it.custom=[]; if(!Array.isArray(it.maintenance)) it.maintenance=[];
+  if(!STATUS.some(s=>s[0]===it.status)) it.status='disponivel';
+  if(it.mode!=='qty') it.mode='unit';
+  return it;
+}
+function normEvent(id,d){
+  const ev=Object.assign({name:'',client:'',place:'',start:todayISO(),end:todayISO(),status:'planejado',notes:'',alloc:[]},d||{}); ev.id=id;
+  if(!Array.isArray(ev.alloc)) ev.alloc=[];
+  if(!ev.end||ev.end<ev.start) ev.end=ev.start;
+  ev._m=new Map(); for(const a of ev.alloc) ev._m.set(a.itemId,(ev._m.get(a.itemId)||0)+num(a.qty));
+  return ev;
+}
+
+/* ---------- escrita ---------- */
+async function runBatch(build){
+  const b=db.batch(); build(b);
+  const p=b.commit();
+  const r=await Promise.race([p.then(()=>'ok'),sleep(3500).then(()=>'slow')]);
+  if(r==='slow') p.catch(handleWriteError);
+  return r;
+}
+function handleWriteError(e){
+  console.error(e);
+  if(e&&e.code==='permission-denied'){ showRulesHelp(); return; }
+  toast('Não foi possível salvar: '+(e&&e.message?e.message:e),'err',5000);
+}
+const clean = o=>JSON.parse(JSON.stringify(o));
+
+/* =====================================================================
+   INFRAESTRUTURA DE INTERFACE: avisos, janelas, imagens, QR, etiquetas
+   ===================================================================== */
+function toast(msg,kind,ms){
+  const t=document.createElement('div'); t.className='toast '+(kind&&kind!=='ok'?kind:''); t.textContent=msg;
+  $('#toasts').appendChild(t); setTimeout(()=>t.remove(),ms||2600);
+}
+const modalStack=[];
+function openModal(o){
+  const prev=document.activeElement;
+  const el=document.createElement('div'); el.className='modal';
+  el.innerHTML='<div class="sheet '+(o.cls||'')+'" role="dialog" aria-modal="true"><div class="sheet-head"><h2></h2><button class="btn sm" data-mclose aria-label="Fechar">✕</button></div><div class="sheet-body"></div>'+(o.foot?'<div class="sheet-foot"></div>':'')+'</div>';
+  const m={el,body:$('.sheet-body',el),foot:$('.sheet-foot',el),opts:o};
+  $('h2',el).textContent=o.title||'';
+  m.setTitle=t=>{$('h2',el).textContent=t;};
+  m.close=()=>{
+    if(!el.isConnected) return;
+    el.remove(); const i=modalStack.indexOf(m); if(i>=0) modalStack.splice(i,1);
+    document.documentElement.classList.toggle('lock',modalStack.length>0);
+    if(o.onClose) o.onClose();
+    if(prev&&prev.focus&&prev.isConnected){try{prev.focus();}catch(e){}}
+  };
+  m.request=async()=>{ if(o.beforeClose && !(await o.beforeClose())) return; m.close(); };
+  el.addEventListener('mousedown',e=>{ if(e.target===el && !o.noBackdrop) m.request(); });
+  el.addEventListener('click',e=>{ if(e.target.closest('[data-mclose]')) m.request(); });
+  if(o.body!=null) m.body.innerHTML=o.body;
+  if(typeof o.foot==='string') m.foot.innerHTML=o.foot;
+  $('#modal-root').appendChild(el); modalStack.push(m);
+  document.documentElement.classList.add('lock');
+  return m;
+}
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  const v=$('.viewer'); if(v){v.remove();return;}
+  const m=modalStack[modalStack.length-1]; if(m) m.request();
+});
+function confirmBox(msg,{ok='Confirmar',danger=false,title='Confirmar'}={}){
+  return new Promise(res=>{
+    const m=openModal({title,cls:'small',foot:true,noBackdrop:true,body:'<p class="pre" style="margin:0">'+esc(msg)+'</p>',onClose:()=>res(false)});
+    m.foot.innerHTML='<button class="btn" data-x="no">Cancelar</button><button class="btn '+(danger?'danger':'pri')+'" data-x="yes">'+esc(ok)+'</button>';
+    m.el.addEventListener('click',e=>{const b=e.target.closest('[data-x]'); if(!b) return; res(b.dataset.x==='yes'); m.close();});
+    const first=$('[data-x="no"]',m.el); if(first) first.focus();
+  });
+}
+function openViewer(src){
+  const v=document.createElement('div'); v.className='viewer'; v.innerHTML='<img alt="Foto ampliada">'; $('img',v).src=src;
+  v.addEventListener('click',()=>v.remove()); document.body.appendChild(v);
+}
+function showBanner(html,kind){ $('#banner').innerHTML=html?'<div class="banner '+(kind||'')+'">'+html+'</div>':''; }
+
+/* ---------- sincronização (indicador no topo) ---------- */
+function updateSync(){
+  const el=$('#sync'), s=S.sync; let cls,ic,tx;
+  if(fbError){cls='err';ic='✕';tx='Sem conexão com o Firebase';}
+  else if(!navigator.onLine){cls='off';ic='○';tx='Offline (salvo no aparelho)';}
+  else if(s.fromCache||!S.loaded.items){cls='wait';ic='◌';tx='Conectando…';}
+  else if(s.pending){cls='wait';ic='◐';tx='Enviando…';}
+  else {cls='ok';ic='●';tx='Sincronizado';}
+  el.className='sync '+cls; el.innerHTML='<i>'+ic+'</i><span>'+tx+'</span>';
+}
+window.addEventListener('online',()=>{S.sync.online=true;updateSync();});
+window.addEventListener('offline',()=>{S.sync.online=false;updateSync();});
+
+/* ---------- imagens (fotos vão comprimidas para o Firestore) ---------- */
+function loadImg(src){return new Promise((res,rej)=>{const i=new Image();i.onload=()=>res(i);i.onerror=()=>rej(new Error('Imagem inválida'));i.src=src;});}
+async function compressImage(file,max,q){
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await loadImg(url);
+    const w0=img.naturalWidth,h0=img.naturalHeight,s=Math.min(1,max/Math.max(w0,h0));
+    const c=document.createElement('canvas'); c.width=Math.round(w0*s); c.height=Math.round(h0*s);
+    c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+    return c.toDataURL('image/jpeg',q);
+  }finally{URL.revokeObjectURL(url);}
+}
+async function photoFromFile(file){
+  let d=await compressImage(file,1100,0.72);
+  if(d.length>700000) d=await compressImage(file,800,0.6);
+  return d;
+}
+async function makeThumb(dataUrl){
+  const img=await loadImg(dataUrl), s=Math.min(1,160/Math.max(img.width,img.height));
+  const c=document.createElement('canvas'); c.width=Math.round(img.width*s); c.height=Math.round(img.height*s);
+  c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  return c.toDataURL('image/jpeg',0.6);
+}
+
+/* ---------- QR Code ---------- */
+let qrPromise=null;
+function loadQrLib(){
+  if(window.qrcode) return Promise.resolve();
+  if(qrPromise) return qrPromise;
+  const urls=['https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js','https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js'];
+  qrPromise=(async()=>{
+    for(const u of urls){
+      try{ await new Promise((ok,no)=>{const s=document.createElement('script');s.src=u;s.onload=ok;s.onerror=no;document.head.appendChild(s);}); if(window.qrcode) return; }catch(e){}
     }
+    qrPromise=null; throw new Error('Não foi possível carregar o gerador de QR Code (verifique a internet).');
+  })();
+  return qrPromise;
+}
+function baseUrl(){
+  const custom=(S.meta.baseUrl||'').trim().split('#')[0];
+  if(custom) return custom;
+  return location.protocol==='file:'?location.href.split('#')[0]:location.origin+location.pathname;
+}
+const itemUrl = id=>baseUrl()+'#item='+id;
+function qrMatrix(text){
+  const qr=window.qrcode(0,'M'); qr.addData(text); qr.make();
+  const n=qr.getModuleCount(), rows=[];
+  for(let r=0;r<n;r++){const row=[];for(let c=0;c<n;c++)row.push(qr.isDark(r,c));rows.push(row);}
+  return rows;
+}
+function qrSvg(text){
+  if(!window.qrcode) return '';
+  const m=qrMatrix(text), n=m.length, q=2, size=n+q*2; let d='';
+  for(let r=0;r<n;r++){let c=0; while(c<n){ if(m[r][c]){const s=c; while(c<n&&m[r][c]) c++; d+='M'+(s+q)+' '+(r+q)+'h'+(c-s)+'v1h-'+(c-s)+'z';} else c++; }}
+  return '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 '+size+' '+size+'" shape-rendering="crispEdges"><rect width="'+size+'" height="'+size+'" fill="#fff"/><path d="'+d+'" fill="#000"/></svg>';
+}
+function qrPngBlob(text){
+  const m=qrMatrix(text), sc=12, q=3, size=(m.length+q*2)*sc;
+  const c=document.createElement('canvas'); c.width=c.height=size;
+  const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,size,size); x.fillStyle='#000';
+  for(let r=0;r<m.length;r++)for(let k=0;k<m.length;k++) if(m[r][k]) x.fillRect((k+q)*sc,(r+q)*sc,sc,sc);
+  return new Promise(res=>c.toBlob(res,'image/png'));
+}
+async function copyQr(id){
+  try{
+    if(!window.ClipboardItem||!navigator.clipboard||!navigator.clipboard.write) throw new Error('sem suporte');
+    await navigator.clipboard.write([new ClipboardItem({'image/png':qrPngBlob(itemUrl(id))})]);
+    toast('QR Code copiado');
+  }catch(e){ toast('Este navegador não copia imagens. Use "Baixar PNG".','warn',4000); }
+}
+async function downloadQr(id,name){
+  const b=await qrPngBlob(itemUrl(id)), a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download='qr-'+slug(name)+'.png'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+}
+async function copyText(t,msg){
+  try{await navigator.clipboard.writeText(t);toast(msg||'Copiado');}
+  catch(e){const ta=document.createElement('textarea');ta.value=t;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast(msg||'Copiado');}catch(x){toast('Não foi possível copiar','err');}ta.remove();}
+}
+/* bloco de QR reutilizado no formulário e no detalhe */
+function qrBlockHTML(it){
+  const url=itemUrl(it.id);
+  return '<div class="qrbox"><div class="qr" data-qr="'+esc(it.id)+'">'+(window.qrcode?qrSvg(url):'<div class="empty" style="border:0">Gerando…</div>')+'</div>'+
+    '<div class="acts">'+
+    '<button type="button" class="btn sm" data-act="qr-copy" data-id="'+esc(it.id)+'">Copiar imagem</button>'+
+    '<button type="button" class="btn sm" data-act="qr-png" data-id="'+esc(it.id)+'" data-name="'+esc(it.name||'item')+'">Baixar PNG</button>'+
+    '<button type="button" class="btn sm blue" data-act="qr-print" data-id="'+esc(it.id)+'">Imprimir etiqueta</button>'+
+    '<button type="button" class="btn sm ghost" data-act="qr-link" data-id="'+esc(it.id)+'">Copiar link</button>'+
+    '<div class="link">'+esc(url)+'</div>'+
+    (location.protocol==='file:'&&!(S.meta.baseUrl||'').trim()?'<div class="warn" style="font-size:12px">Você abriu o arquivo direto do computador. Defina a "URL do app" em ⚙ Configurações para o QR abrir o endereço certo.</div>':'')+
+    '</div></div>';
+}
+/* garante que a biblioteca carregou e desenha os QR pendentes na tela */
+async function fillQrSlots(root){
+  const slots=$$('[data-qr]',root||document); if(!slots.length) return;
+  try{ await loadQrLib(); }catch(e){ slots.forEach(s=>s.innerHTML='<div class="empty bad" style="border:0;font-size:11px">QR indisponível</div>'); return; }
+  slots.forEach(s=>{s.innerHTML=qrSvg(itemUrl(s.dataset.qr));});
+}
 
-    function initFirebaseIfPossible() {
-      if (fbConfig && fbConfig.apiKey && fbConfig.projectId && window.firebase) {
-        try {
-          if (!firebase.apps.length) {
-            firebase.initializeApp(fbConfig);
-          }
-          db = firebase.firestore();
-          // Real-time listener
-          db.collection('vr_fleet_management_items').onSnapshot(snap => {
-            const list = [];
-            snap.forEach(d => list.push(d.data()));
-            if (list.length > 0) {
-              items = list;
-              persist();
-            }
-          });
-          db.collection('vr_fleet_management_events').onSnapshot(snap => {
-            const list = [];
-            snap.forEach(d => list.push(d.data()));
-            if (list.length > 0) {
-              events = list;
-              persist();
-            }
-          });
-          document.getElementById('sync-badge').innerHTML = '<span class="w-2 h-2 rounded-full bg-cyan-400"></span> Firebase Nuvem Conectado';
-        } catch(e) {
-          console.error(e);
-        }
-      }
+/* ---------- etiquetas para imprimir ---------- */
+function labelsHTML(items,size){
+  return '<div class="label-sheet ls-'+size+'">'+items.map(it=>
+    '<div class="label"><div class="lq">'+qrSvg(itemUrl(it.id))+'</div><div class="lt"><b>'+esc(it.name)+'</b>'+
+    (it.model&&it.model!==it.name?'<span>'+esc(it.model)+'</span>':'')+
+    (it.serial?'<span>S/N '+esc(it.serial)+'</span>':'')+
+    (it.assetTag?'<span>ID '+esc(it.assetTag)+'</span>':'')+
+    (it.mode==='qty'?'<span>Lote: '+totalQty(it)+' un.</span>':'')+
+    '</div></div>').join('')+'</div>';
+}
+async function openLabels(items){
+  if(!items.length){toast('Nenhum item com QR Code para imprimir.','warn');return;}
+  try{await loadQrLib();}catch(e){toast(e.message,'err',4000);return;}
+  let size=localStorage.getItem('vrm_lsize')||'m';
+  const m=openModal({title:'Etiquetas ('+items.length+')',cls:'wide',foot:true,body:'<div class="row" style="margin-bottom:10px"><label class="lbl" for="lsz">Tamanho</label><select id="lsz" style="width:auto"><option value="s">Pequena</option><option value="m">Média</option><option value="l">Grande</option></select><span class="dim" style="font-size:12px">Cole nos equipamentos. O QR abre a ficha do item neste app.</span></div><div id="lprev"></div>'});
+  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn pri" data-x="print">Imprimir</button>';
+  const draw=()=>{$('#lprev',m.el).innerHTML=labelsHTML(items,size);};
+  $('#lsz',m.el).value=size; draw();
+  $('#lsz',m.el).addEventListener('change',e=>{size=e.target.value;try{localStorage.setItem('vrm_lsize',size);}catch(x){}draw();});
+  m.el.addEventListener('click',e=>{ if(e.target.closest('[data-x="print"]')){ const p=$('#print-portal'); p.innerHTML=labelsHTML(items,size); window.print(); } });
+}
+window.addEventListener('afterprint',()=>{$('#print-portal').innerHTML='';});
+
+/* ---------- regras do Firebase / configurações ---------- */
+function rulesText(){
+  const cond=REQUIRE_LOGIN?"request.auth != null":"true";
+  return "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    // ...mantenha aqui as regras que você já usa (galeria etc.)\n\n    // VR Estoque\n    match /vrm_items/{id}  { allow read, write: if "+cond+"; }\n    match /vrm_events/{id} { allow read, write: if "+cond+"; }\n    match /vrm_photos/{id} { allow read, write: if "+cond+"; }\n    match /vrm_meta/{id}   { allow read, write: if "+cond+"; }\n  }\n}";
+}
+function showRulesHelp(){
+  if($('#rules-modal')) return;
+  const m=openModal({title:'Liberar o VR Estoque no Firebase',cls:'',foot:true,body:
+   '<div id="rules-modal"><p style="margin-top:0">O Firebase bloqueou a leitura/gravação. As regras do seu projeto ainda não permitem as coleções deste app.</p>'+
+   '<ol style="padding-left:18px"><li>Abra o <b>Console do Firebase</b> → projeto <b>project-engine-2f962</b>.</li><li>Vá em <b>Firestore Database → Regras</b>.</li><li>Adicione as 4 linhas <code>vrm_*</code> abaixo <b>sem apagar</b> as regras da galeria e clique em <b>Publicar</b>.</li></ol>'+
+   '<div class="codebox" id="rules-code"></div><p class="dim" style="font-size:12px">Essas coleções são separadas de <code>gallery_objects</code>: a galeria do Dream Engine continua como está.</p></div>'});
+  $('#rules-code',m.el).textContent=rulesText();
+  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn pri" data-x="copy">Copiar regras</button>';
+  m.el.addEventListener('click',e=>{if(e.target.closest('[data-x="copy"]')) copyText(rulesText(),'Regras copiadas');});
+}
+function exportBackup(){
+  const data={app:'vr-estoque',exportedAt:new Date().toISOString(),items:S.items.map(({id,...r})=>Object.assign({id},r)),events:S.events.map(e=>{const {_m,...r}=e;return r;})};
+  const b=new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), a=document.createElement('a');
+  a.href=URL.createObjectURL(b); a.download='vr-estoque-backup-'+todayISO()+'.json'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
+}
+function openSettings(){
+  const m=openModal({title:'Configurações',cls:'',foot:true,body:
+   '<div class="stack"><div class="field"><label for="set-url">URL do app (usada nos QR Codes)</label><input type="text" id="set-url" placeholder="'+esc(baseUrl())+'"><span class="hint">Deixe em branco para usar o endereço atual. Preencha se estiver testando fora do GitHub Pages.</span></div>'+
+   '<div class="row"><button class="btn sm" data-x="backup">Baixar backup (JSON)</button><button class="btn sm" data-x="rules">Ver regras do Firebase</button>'+(REQUIRE_LOGIN&&auth?'<button class="btn sm danger" data-x="logout">Sair</button>':'')+'</div>'+
+   '<p class="dim" style="font-size:12px;margin:0">Dados guardados nas coleções <b>vrm_items</b>, <b>vrm_events</b>, <b>vrm_photos</b> e <b>vrm_meta</b> do projeto '+esc(firebaseConfig.projectId)+'. O backup não inclui as fotos.</p></div>'});
+  $('#set-url',m.el).value=S.meta.baseUrl||'';
+  m.foot.innerHTML='<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-x="save">Salvar</button>';
+  m.el.addEventListener('click',async e=>{
+    const b=e.target.closest('[data-x]'); if(!b) return;
+    if(b.dataset.x==='backup') exportBackup();
+    else if(b.dataset.x==='rules') showRulesHelp();
+    else if(b.dataset.x==='logout'){ await auth.signOut(); m.close(); }
+    else if(b.dataset.x==='save'){
+      const v=$('#set-url',m.el).value.trim();
+      try{ await runBatch(bt=>bt.set(db.collection(COL.meta).doc('config'),{baseUrl:v},{merge:true})); toast('Configurações salvas'); m.close(); }
+      catch(err){handleWriteError(err);}
     }
+  });
+}
 
-    function switchTab(tab) {
-      currentTab = tab;
-      document.querySelectorAll('.tab-btn').forEach(b => {
-        b.className = 'tab-btn px-4 py-3 text-sm font-medium text-slate-400 hover:text-slate-200 border-b-2 border-transparent whitespace-nowrap';
-      });
-      const activeBtn = document.getElementById('tab-btn-' + tab);
-      if (activeBtn) {
-        activeBtn.className = 'tab-btn px-4 py-3 text-sm font-semibold text-cyan-400 border-b-2 border-cyan-400 whitespace-nowrap';
-      }
-      renderCurrentView();
+/* =====================================================================
+   TELAS: GERAL, CATEGORIAS e DETALHE DO ITEM
+   ===================================================================== */
+const ready = ()=>S.loaded.items&&S.loaded.events;
+const skeleton = ()=>{
+  if(fbError) return '<div class="card"><div class="empty"><b class="bad">Sem conexão com o Firebase</b>Não foi possível carregar o Firebase (sem internet ou bloqueado). Recarregue a página.</div></div>';
+  if(S.loadError) return '<div class="card"><div class="empty"><b class="bad">Não foi possível ler o estoque</b>'+(S.loadError==='permission-denied'?'O Firebase bloqueou o acesso. Falta liberar as regras das coleções vrm_*.<br><br><button class="btn pri" data-act="rules">Ver como liberar</button>':'Erro: '+esc(S.loadError))+'</div></div>';
+  return '<div class="card"><div class="empty"><b>Carregando dados…</b>Buscando o estoque na nuvem.</div></div>';
+};
+
+function asciiBar(F,R,U,T,w){
+  if(!T) return '<span class="bo">'+'░'.repeat(w)+'</span>';
+  let f=Math.round(F/T*w), r=Math.round(R/T*w), u=Math.round(U/T*w);
+  if(F>0&&f===0) f=1; if(R>0&&r===0) r=1; if(U>0&&u===0) u=1;
+  let diff=w-(f+r+u);
+  while(diff!==0){
+    const k=[['f',f],['r',r],['u',u]].sort((a,b)=>b[1]-a[1])[0][0];
+    if(diff>0){ if(k==='f')f++; else if(k==='r')r++; else u++; diff--; }
+    else { if(k==='f')f--; else if(k==='r')r--; else u--; diff++; }
+  }
+  return '<span class="bf">'+'█'.repeat(f)+'</span><span class="br">'+'▓'.repeat(r)+'</span><span class="bu">'+'▒'.repeat(u)+'</span>';
+}
+const LEGEND='<div class="legend"><span><span class="bf">█</span> livre</span><span><span class="br">▓</span> em eventos</span><span><span class="bu">▒</span> fora de uso</span></div>';
+function condHTML(c){
+  const n=COND_LEVEL[c]||0; if(!n) return '';
+  return '<span class="cond c'+n+'" title="Conservação: '+esc(label(CONDITION,c))+'"><span class="m">'+'■'.repeat(n)+'□'.repeat(5-n)+'</span> '+esc(label(CONDITION,c))+'</span>';
+}
+const statusBadge = s=>'<span class="badge st-'+esc(s)+'">'+esc(label(STATUS,s))+'</span>';
+function scopeOptions(){
+  const tags=tagIndex(), models=groupsOf(S.items);
+  let h='<option value="all">Tudo</option>';
+  if(tags.length) h+='<optgroup label="Categorias">'+tags.map(t=>'<option value="tag:'+esc(t.name)+'">'+esc(t.name)+' ('+t.units+')</option>').join('')+'</optgroup>';
+  if(models.length) h+='<optgroup label="Modelos">'+models.map(g=>'<option value="model:'+esc(g.key)+'">'+esc(g.key)+'</option>').join('')+'</optgroup>';
+  return h;
+}
+const evsOn = (a,b)=>S.events.filter(ev=>ev.status!=='cancelado'&&ev.start<=b&&ev.end>=a).sort((x,y)=>x.start.localeCompare(y.start));
+const needResult = (free,need)=>!need?'':need<=free?'<span class="good">✓ cabe · sobram '+(free-need)+'</span>':'<span class="bad">faltam '+(need-free)+'</span>';
+
+/* ---------- GERAL ---------- */
+function renderGeral(){
+  const v=$('#view-geral');
+  if(!ready()){v.innerHTML=skeleton();return;}
+  if(!S.items.length){
+    v.innerHTML='<div class="card glow"><div class="empty"><b>Nenhum item no estoque ainda</b>Cadastre o primeiro equipamento para ver a disponibilidade aqui.<br><br><button class="btn pri" data-act="goto" data-tab="cadastrar">+ Cadastrar item</button></div></div>';
+    return;
+  }
+  let scope=resolveScope(); const opts=scopeOptions();
+  if(!scopeItems(scope).length && scope!=='all') scope='all';
+  const items=scopeItems(scope);
+  const a=S.ui.date, b=(S.ui.end&&S.ui.end>=a)?S.ui.end:a;
+  const st=rangeStats(items,a,b);
+  const t=todayISO();
+  const dateLbl=a===b?(a===t?'hoje':fmtDate(a)):fmtRange(a,b);
+  const evs=evsOn(a,b);
+
+  /* alertas */
+  let alerts='';
+  const conf=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').map(ev=>({ev,c:eventConflicts(ev)})).filter(x=>x.c.length);
+  conf.slice(0,4).forEach(x=>{alerts+='<button class="alert red" data-act="open-event" data-id="'+esc(x.ev.id)+'">⚠ Conflito no evento “'+esc(x.ev.name)+'”: '+x.c.length+' item(ns) indisponível(is) ou reservado(s) em duplicidade</button>';});
+  const off=S.items.filter(it=>it.status==='manutencao'||it.status==='danificado').length;
+  if(off) alerts+='<button class="alert" data-act="goto-off">'+off+' item(ns) fora de uso (manutenção ou danificado) — ver lista</button>';
+
+  /* grupos por modelo */
+  const groups=groupsOf(items).map(g=>({g,s:rangeStats(g.items,a,b)}));
+  const grpHTML=groups.map(({g,s})=>{
+    const need=num(S.ui.need[g.key]);
+    return '<div class="grp" data-group="'+esc(g.key)+'"><div class="grp-top"><b>'+esc(g.key)+'</b><span><b class="'+(s.F===0?'bad':'good')+'">'+s.F+'</b>/'+s.T+' livres</span></div>'+
+      '<div class="bar" aria-label="'+s.F+' livres de '+s.T+'">'+asciiBar(s.F,s.R,s.U,s.T,20)+'</div>'+
+      '<div class="grp-sub"><span>em eventos '+s.R+' · fora de uso '+s.U+'</span><label class="need">Preciso <input type="number" min="0" step="1" inputmode="numeric" data-need="'+esc(g.key)+'" value="'+(need||'')+'" aria-label="Quantidade necessária de '+esc(g.key)+'"><span class="need-res">'+needResult(s.F,need)+'</span></label></div></div>';
+  }).join('');
+
+  /* calendário */
+  const [cy,cm]=S.ui.month.split('-').map(Number);
+  const first=new Date(cy,cm-1,1,12), start=new Date(first); start.setDate(1-first.getDay());
+  let cells='';
+  for(let i=0;i<42;i++){
+    const d=new Date(start); d.setDate(start.getDate()+i); const ds=iso(d);
+    const s=dayStats(items,ds), n=S.events.filter(ev=>ev.status!=='cancelado'&&ds>=ev.start&&ds<=ev.end).length;
+    const cls=!s.T?'f-na':s.F===0?'f-zero':s.F/s.T<=0.25?'f-low':'f-ok';
+    cells+='<button class="cday'+(d.getMonth()!==cm-1?' out':'')+(ds===t?' today':'')+(ds>=a&&ds<=b?' inr':'')+(ds===a?' sel':'')+'" data-act="pick-day" data-date="'+ds+'" aria-label="'+fmtDate(ds)+': '+s.F+' livres, '+n+' evento(s)"><span class="dn">'+d.getDate()+'</span><span class="fv '+cls+'">'+(s.T?s.F:'·')+'</span><span class="ev">'+(n?'▪'.repeat(Math.min(n,4))+(n>4?'+':''):'')+'</span></button>';
+  }
+
+  /* próximos eventos */
+  const up=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').sort((x,y)=>x.start.localeCompare(y.start)||x.name.localeCompare(y.name)).slice(0,6);
+  const upHTML=up.length?up.map(evRowHTML).join(''):'<div class="empty"><b>Nenhum evento à vista</b>Crie um na aba Eventos.</div>';
+
+  v.innerHTML=(alerts?'<div style="margin-bottom:14px">'+alerts+'</div>':'')+
+  '<div class="grid2"><div class="stack">'+
+    '<div class="card glow"><div class="h2"><span class="t">Disponibilidade</span></div>'+
+      '<div class="fgrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">'+
+      '<div class="field"><label for="g-scope">Mostrar</label><select id="g-scope">'+opts+'</select></div>'+
+      '<div class="field"><label for="g-date">Data</label><input type="date" id="g-date" value="'+a+'"></div>'+
+      '<div class="field"><label for="g-end">Até (opcional)</label><input type="date" id="g-end" value="'+(S.ui.end&&S.ui.end>=a?S.ui.end:'')+'" min="'+a+'"></div></div>'+
+      '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="g-today">Hoje</button>'+(a!==b?'<button class="btn sm ghost" data-act="g-clear-end">Só um dia</button>':'')+'<button class="btn sm blue" data-act="new-event" data-date="'+a+'">+ Evento nesta data</button></div>'+
+      '<div style="margin-top:14px"><div class="hero-num">'+st.F+' <small>livres de '+st.T+' · '+esc(dateLbl)+'</small></div>'+
+      '<div class="hero-bar bar" aria-hidden="true">'+asciiBar(st.F,st.R,st.U,st.T,24)+'</div>'+LEGEND+
+      '<div class="trio"><div><b>'+st.R+'</b><span>em eventos</span></div><div><b>'+st.U+'</b><span>fora de uso</span></div></div>'+
+      (a!==b?'<div class="dim" style="font-size:12px;margin-top:6px">Período: considera o dia com menos itens livres.</div>':'')+'</div>'+
+      (evs.length?'<div class="h3">Eventos '+(a===b?'nesta data':'neste período')+'</div><div class="chips">'+evs.map(ev=>'<button class="chip x" data-act="open-event" data-id="'+esc(ev.id)+'">'+esc(ev.name)+' <span class="n">'+fmtShort(ev.start)+(ev.end!==ev.start?'–'+fmtShort(ev.end):'')+'</span></button>').join('')+'</div>':'')+
+    '</div>'+
+    '<div class="card"><div class="h2"><span class="t">Por modelo</span><small class="dim">Digite “Preciso” para conferir se cabe</small></div>'+(grpHTML||'<div class="empty">Nada nesta categoria.</div>')+'</div>'+
+  '</div><div class="stack">'+
+    '<div class="card"><div class="h2"><span class="t">Calendário</span><small class="dim">livres por dia · ▪ eventos</small></div>'+
+      '<div class="cal-head"><button class="btn sm" data-act="cal-prev" aria-label="Mês anterior">‹</button><b>'+MONTHS[cm-1]+' '+cy+'</b><button class="btn sm" data-act="cal-next" aria-label="Próximo mês">›</button></div>'+
+      '<div class="cal">'+['D','S','T','Q','Q','S','S'].map(x=>'<div class="dow">'+x+'</div>').join('')+cells+'</div></div>'+
+    '<div class="card"><div class="h2"><span class="t">Próximos eventos</span><button class="btn sm" data-act="goto" data-tab="eventos">Ver todos</button></div>'+upHTML+'</div>'+
+  '</div></div>';
+  const sel=$('#g-scope',v); sel.value=scope; if(sel.value!==scope) sel.value='all';
+}
+function evRowHTML(ev){
+  const ph=evPhase(ev), conf=eventConflicts(ev).length, t=todayISO();
+  let when=''; if(ph==='andamento') when='em andamento'; else if(ph==='proximo'){const d=diffDays(t,ev.start); when=d===1?'amanhã':'em '+d+' dias';}
+  const [y]=ev.start.split('-');
+  return '<button class="erow" data-act="open-event" data-id="'+esc(ev.id)+'"><span class="edate"><b>'+fmtShort(ev.start).replace(' ','<br>')+'</b><small>'+(ev.end!==ev.start?'até '+fmtShort(ev.end):y)+'</small></span>'+
+    '<span class="emain"><b>'+esc(ev.name||'(sem nome)')+'</b><small>'+esc([ev.client,ev.place].filter(Boolean).join(' · ')||'—')+'</small><small>'+(evCount(ev)?esc(evSummary(ev)):'sem equipamentos')+'</small></span>'+
+    '<span class="emeta"><span class="badge st-'+ev.status+'">'+esc(label(EV_STATUS,ev.status))+'</span>'+(when?'<span class="dim">'+when+'</span>':'')+(conf?'<span class="bad">⚠ conflito</span>':'')+'</span></button>';
+}
+
+/* ---------- CATEGORIAS ---------- */
+let catsShell=false;
+function itemSearchText(it){
+  return norm([it.name,it.model,it.brand,it.serial,it.assetTag,it.location,it.supplier,it.notes,(it.tags||[]).join(' '),(it.custom||[]).map(c=>c.k+' '+c.v).join(' ')].join(' '));
+}
+function filteredItems(){
+  const u=S.ui, q=norm(u.q.trim());
+  let list=S.items.filter(it=>{
+    if(q && !q.split(/\s+/).every(w=>itemSearchText(it).includes(w))) return false;
+    if(u.cstatus==='fora'){ if(it.status==='disponivel') return false; }
+    else if(u.cstatus!=='all' && it.status!==u.cstatus) return false;
+    if(u.ctag==='__none'){ if((it.tags||[]).length) return false; }
+    else if(u.ctag!=='all' && !hasTag(it,u.ctag)) return false;
+    return true;
+  });
+  const cmp={
+    name:(a,b)=>a.name.localeCompare(b.name,'pt',{numeric:true}),
+    model:(a,b)=>groupKey(a).localeCompare(groupKey(b),'pt')||a.name.localeCompare(b.name,'pt',{numeric:true}),
+    recent:(a,b)=>(b.createdAt||0)-(a.createdAt||0),
+    status:(a,b)=>STATUS.findIndex(s=>s[0]===a.status)-STATUS.findIndex(s=>s[0]===b.status)||a.name.localeCompare(b.name,'pt',{numeric:true}),
+    cond:(a,b)=>(COND_LEVEL[a.condition]||9)-(COND_LEVEL[b.condition]||9)||a.name.localeCompare(b.name,'pt',{numeric:true})
+  }[u.csort]||((a,b)=>0);
+  return list.sort(cmp);
+}
+function itemRowHTML(it){
+  const s=dayStats([it],todayISO());
+  let av;
+  if(it.mode==='qty') av='<span class="'+(s.F===0?'bad':'good')+'">'+s.F+'/'+s.T+' livres</span>';
+  else av=s.U?'<span class="warn">indisponível</span>':s.R?'<span class="dim">em evento hoje</span>':'<span class="good">livre</span>';
+  return '<button class="irow" data-act="open-item" data-id="'+esc(it.id)+'"><span class="thumb">'+(it.thumb?'<img alt="" src="'+esc(it.thumb)+'">':'▢')+'</span>'+
+    '<span class="imain"><b>'+esc(it.name)+'</b><small>'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||(it.mode==='qty'?'Lote de '+totalQty(it):'—'))+'</small>'+
+    ((it.tags||[]).length?'<span class="tagline">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</span>':'')+'</span>'+
+    '<span class="imeta">'+statusBadge(it.status)+condHTML(it.condition)+av+'</span></button>';
+}
+function ensureCatsShell(){
+  if(catsShell) return;
+  catsShell=true;
+  $('#view-categorias').innerHTML='<div class="card"><div class="toolbar"><div class="grow1"><input type="search" id="c-q" placeholder="Buscar nome, modelo, série, tag…" aria-label="Buscar"></div>'+
+   '<select id="c-status" style="width:auto" aria-label="Situação"><option value="all">Todas as situações</option><option value="fora">Fora de uso</option>'+STATUS.map(s=>'<option value="'+s[0]+'">'+s[1]+'</option>').join('')+'</select>'+
+   '<select id="c-sort" style="width:auto" aria-label="Ordenar"><option value="name">Nome A–Z</option><option value="model">Modelo</option><option value="recent">Mais recentes</option><option value="status">Situação</option><option value="cond">Pior conservação</option></select>'+
+   '<button class="btn sm" data-act="c-view" id="c-view"></button><button class="btn sm blue" data-act="c-labels">Etiquetas</button></div>'+
+   '<div class="chips" id="c-chips"></div></div><div class="card" style="margin-top:14px" id="c-list"></div>';
+  $('#c-q').value=S.ui.q; $('#c-status').value=S.ui.cstatus; $('#c-sort').value=S.ui.csort;
+}
+function renderCategorias(){
+  ensureCatsShell();
+  if(!ready()){ $('#c-list').innerHTML='<div class="empty"><b>Carregando…</b></div>'; return; }
+  const tags=tagIndex(), noTag=S.items.filter(it=>!(it.tags||[]).length);
+  if(S.ui.ctag!=='all' && S.ui.ctag!=='__none' && !tags.some(t=>t.name.toLowerCase()===S.ui.ctag.toLowerCase())) S.ui.ctag='all';
+  $('#c-chips').innerHTML='<button class="chip'+(S.ui.ctag==='all'?' on':'')+'" data-act="c-tag" data-tag="all">Todas<span class="n">'+S.items.length+'</span></button>'+
+    tags.map(t=>'<button class="chip'+(S.ui.ctag.toLowerCase()===t.name.toLowerCase()?' on':'')+'" data-act="c-tag" data-tag="'+esc(t.name)+'">'+esc(t.name)+'<span class="n">'+t.items+'</span></button>').join('')+
+    (noTag.length?'<button class="chip'+(S.ui.ctag==='__none'?' on':'')+'" data-act="c-tag" data-tag="__none">Sem categoria<span class="n">'+noTag.length+'</span></button>':'');
+  $('#c-view').textContent=S.ui.cview==='group'?'▤ Agrupado':'☰ Lista';
+  const list=filteredItems(), box=$('#c-list');
+  if(!S.items.length){ box.innerHTML='<div class="empty"><b>Estoque vazio</b>As categorias nascem das tags que você põe nos itens.<br><br><button class="btn pri" data-act="goto" data-tab="cadastrar">+ Cadastrar item</button></div>'; return; }
+  if(!list.length){ box.innerHTML='<div class="empty"><b>Nada encontrado</b>Ajuste a busca ou os filtros.</div>'; return; }
+  const totalUnits=list.reduce((s,i)=>s+totalQty(i),0);
+  let html='<div class="dim" style="font-size:12px;margin-bottom:8px">'+list.length+' item(ns) · '+totalUnits+' unidade(s)</div>';
+  if(S.ui.cview==='group' && S.ui.ctag==='all'){
+    const secs=tags.map(t=>({name:t.name,items:list.filter(it=>hasTag(it,t.name))}));
+    const rest=list.filter(it=>!(it.tags||[]).length); if(rest.length) secs.push({name:'Sem categoria',items:rest});
+    html+=secs.filter(s=>s.items.length).map(s=>{
+      const st=dayStats(s.items,todayISO());
+      return '<div class="cat-h"><span>'+esc(s.name)+'</span><small>'+s.items.length+' item(ns) · '+st.F+'/'+st.T+' livres hoje</small></div>'+s.items.map(itemRowHTML).join('');
+    }).join('');
+  } else html+=list.map(itemRowHTML).join('');
+  box.innerHTML=html;
+}
+
+/* ---------- DETALHE DO ITEM ---------- */
+async function getPhotos(id,force){
+  if(!force&&S.photoCache.has(id)) return S.photoCache.get(id);
+  const snap=await db.collection(COL.photos).where('itemId','==',id).get();
+  const arr=snap.docs.map(d=>({id:d.id,data:d.data().data,ts:d.data().ts||0})).sort((a,b)=>a.ts-b.ts);
+  S.photoCache.set(id,arr); return arr;
+}
+function fieldValueHTML(f,v){
+  if(f.type==='select') return esc(label(f.options,v));
+  if(f.type==='date') return esc(fmtDate(v));
+  if(f.fmt) return esc(f.fmt(v));
+  return esc(v);
+}
+function openItem(id){
+  const it=S.itemsById.get(id); if(!it){toast('Item não encontrado','warn');return;}
+  if(S.detail) S.detail.close();
+  const m=openModal({title:it.name,cls:'wide',foot:true,body:''});
+  m.itemId=id; S.detail=m; m.opts.onClose=()=>{ if(S.detail===m) S.detail=null; };
+  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn blue" data-act="d-labels">Etiqueta</button><button class="btn pri" data-act="d-edit">Editar</button>';
+  m.el.addEventListener('click',e=>{const b=e.target.closest('[data-act]'); if(!b) return; const a=b.dataset.act;
+    if(a==='d-edit') openItemEdit(m.itemId);
+    else if(a==='d-labels'){const x=S.itemsById.get(m.itemId); if(x) openLabels([x]);}
+    else if(a==='view-photo'){const p=(S.photoCache.get(m.itemId)||[])[+b.dataset.i]; if(p) openViewer(p.data);}
+    else if(a==='m-toggle'){const f=$('#m-form',m.el); f.classList.toggle('hide'); if(!f.classList.contains('hide')) $('#m-desc',m.el).focus();}
+    else if(a==='m-save') saveMaintFromDetail(m);
+  });
+  renderDetail(m);
+}
+function renderDetail(m){
+  const it=S.itemsById.get(m.itemId);
+  if(!it){ toast('Este item foi removido','warn'); m.close(); return; }
+  const top=m.body.scrollTop;
+  m.setTitle(it.name);
+  const s=dayStats([it],todayISO());
+  const avail=it.mode==='qty'?s.F+' de '+s.T+' livres hoje':(s.U?'indisponível hoje':s.R?'em evento hoje':'livre hoje');
+  const fields=ITEM_FIELDS.filter(f=>!['name','status','condition','notes'].includes(f.key)&&(!f.showIf||f.showIf(it))&&String(it[f.key]==null?'':it[f.key]).trim()!==''&&!(f.type==='number'&&f.key==='unavailQty'&&!num(it[f.key])));
+  const kv=fields.map(f=>'<div><span>'+esc(f.label)+'</span><b>'+fieldValueHTML(f,it[f.key])+'</b></div>').join('')+(it.custom||[]).filter(c=>c.k).map(c=>'<div><span>'+esc(c.k)+'</span><b>'+esc(c.v)+'</b></div>').join('');
+  const maint=(it.maintenance||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+  const uses=S.events.filter(ev=>ev._m.has(it.id)).sort((a,b)=>b.start.localeCompare(a.start));
+  const maintCost=maint.reduce((t,x)=>t+num(x.cost),0);
+  m.body.innerHTML=
+   '<div class="row" style="margin-bottom:10px">'+statusBadge(it.status)+condHTML(it.condition)+'<span class="'+(s.F===0?'bad':'good')+'">'+esc(avail)+'</span></div>'+
+   ((it.tags||[]).length?'<div class="tagline" style="margin-bottom:10px">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</div>':'')+
+   '<div id="d-photos" class="dim" style="margin-bottom:12px">'+(it.photoCount?'Carregando fotos…':'')+'</div>'+
+   (kv?'<div class="kv">'+kv+'</div>':'')+
+   (it.notes?'<div class="h3">Observações</div><div class="pre">'+esc(it.notes)+'</div>':'')+
+   (it.qrEnabled?'<div class="h3">QR Code</div>'+qrBlockHTML(it):'')+
+   '<div class="h3">Manutenção'+(maint.length?' · '+maint.length+' registro(s)'+(maintCost?' · '+money(maintCost):''):'')+'</div>'+
+   '<div class="row" style="margin-bottom:8px"><button class="btn sm" data-act="m-toggle">+ Registrar manutenção</button></div>'+
+   '<div id="m-form" class="sect hide" style="margin-bottom:10px"><div class="fgrid">'+
+     '<div class="field"><label for="m-date">Data</label><input type="date" id="m-date" value="'+todayISO()+'"></div>'+
+     '<div class="field"><label for="m-type">Tipo</label><select id="m-type">'+MAINT_TYPES.map(t=>'<option>'+esc(t)+'</option>').join('')+'</select></div>'+
+     '<div class="field full"><label for="m-desc">O que foi feito</label><input type="text" id="m-desc" placeholder="Ex.: troca de almofada facial"></div>'+
+     '<div class="field"><label for="m-cost">Custo (R$)</label><input type="number" id="m-cost" min="0" step="0.01" inputmode="decimal"></div>'+
+     '<div class="field"><label for="m-by">Responsável</label><input type="text" id="m-by"></div></div>'+
+     '<div class="row" style="margin-top:10px"><button class="btn pri" data-act="m-save">Salvar registro</button></div></div>'+
+   (maint.length?'<div class="tl">'+maint.map(x=>'<div class="it"><b>'+esc(fmtDate(x.date))+' · '+esc(x.type||'Manutenção')+'</b>'+(x.cost?' <small>'+esc(money(x.cost))+'</small>':'')+'<br>'+esc(x.desc||'')+(x.by?'<br><small>por '+esc(x.by)+'</small>':'')+'</div>').join('')+'</div>':'<div class="dim">Nenhum registro de manutenção.</div>')+
+   '<div class="h3">Eventos com este item'+(uses.length?' · '+uses.length:'')+'</div>'+
+   (uses.length?uses.map(ev=>'<button class="erow" style="margin-top:6px" data-act="open-event" data-id="'+esc(ev.id)+'"><span class="edate"><b>'+fmtShort(ev.start)+'</b><small>'+(ev.end!==ev.start?'até '+fmtShort(ev.end):ev.start.slice(0,4))+'</small></span><span class="emain"><b>'+esc(ev.name)+'</b><small>'+ev._m.get(it.id)+' un. · '+esc(PHASE_LABEL[evPhase(ev)])+'</small></span><span class="emeta"><span class="badge st-'+ev.status+'">'+esc(label(EV_STATUS,ev.status))+'</span></span></button>').join(''):'<div class="dim">Ainda não foi usado em eventos.</div>')+
+   '<div class="dim" style="font-size:11px;margin-top:14px">Cadastrado em '+(it.createdAt?new Date(it.createdAt).toLocaleDateString('pt-BR'):'—')+(it.updatedAt?' · atualizado em '+new Date(it.updatedAt).toLocaleDateString('pt-BR'):'')+'</div>';
+  m.body.scrollTop=top;
+  fillQrSlots(m.el);
+  if(it.photoCount) getPhotos(it.id).then(ph=>{
+    const box=$('#d-photos',m.el); if(!box||!m.el.isConnected) return;
+    box.innerHTML=ph.length?'<div class="photos">'+ph.map((p,i)=>'<div class="ph" data-act="view-photo" data-i="'+i+'"><img alt="Foto '+(i+1)+'" src="'+esc(p.data)+'"></div>').join('')+'</div>':'';
+  }).catch(e=>{const box=$('#d-photos',m.el); if(box) box.textContent='Não foi possível carregar as fotos.'; if(e&&e.code==='permission-denied') showRulesHelp();});
+}
+async function saveMaintFromDetail(m){
+  const it=S.itemsById.get(m.itemId); if(!it) return;
+  const desc=$('#m-desc',m.el).value.trim();
+  if(!desc){toast('Descreva o que foi feito','warn');$('#m-desc',m.el).focus();return;}
+  const entry={id:Math.random().toString(36).slice(2,10),date:$('#m-date',m.el).value||todayISO(),type:$('#m-type',m.el).value,desc,cost:num($('#m-cost',m.el).value)||0,by:$('#m-by',m.el).value.trim()};
+  const form=$('#m-form',m.el); form.classList.add('hide'); ['#m-desc','#m-cost','#m-by'].forEach(s=>{$(s,m.el).value='';});
+  try{
+    await runBatch(b=>b.update(db.collection(COL.items).doc(it.id),{maintenance:(it.maintenance||[]).concat([entry]),updatedAt:Date.now()}));
+    toast('Manutenção registrada');
+  }catch(e){ if(form.isConnected){ form.classList.remove('hide'); $('#m-desc',m.el).value=desc; } handleWriteError(e); }
+}
+
+/* =====================================================================
+   FORMULÁRIO DO ITEM (usado em "Cadastrar" e na janela "Editar")
+   ===================================================================== */
+const liveDrafts = new Map();
+const newId = ()=>db?db.collection(COL.photos).doc().id:Math.random().toString(36).slice(2,12);
+const photoRef = id=>db.collection(COL.photos).doc(id);
+function newDraft(){
+  const d=DEFAULT_ITEM(); d.id=db?db.collection(COL.items).doc().id:Math.random().toString(36).slice(2,12);
+  d._photos=[]; d._orig=[]; d._photosLoaded=true; return d;
+}
+function draftFromItem(it){
+  const d=clone(it); delete d.thumb; d._photos=[]; d._orig=[]; d._photosLoaded=!it.photoCount; return d;
+}
+const fieldByKey = k=>ITEM_FIELDS.find(f=>f.key===k);
+function formLayout(){
+  const known=new Set(FORM_LAYOUT), extra=[];
+  ITEM_FIELDS.forEach(f=>{ if(!known.has(f.sec)&&!extra.includes(f.sec)) extra.push(f.sec); });
+  const out=[]; FORM_LAYOUT.forEach(n=>{ if(n==='@photos') extra.forEach(x=>out.push(x)); out.push(n); });
+  return out;
+}
+function fieldHTML(f,ctx){
+  const d=ctx.draft, id='ff-'+ctx.uid+'-'+f.key, val=d[f.key]==null?'':d[f.key];
+  let input;
+  if(f.type==='select') input='<select id="'+id+'" data-f="'+f.key+'">'+f.options.map(o=>'<option value="'+esc(o[0])+'"'+(String(o[0])===String(val)?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
+  else if(f.type==='textarea') input='<textarea id="'+id+'" data-f="'+f.key+'" placeholder="'+esc(f.ph||'')+'">'+esc(val)+'</textarea>';
+  else input='<input type="'+f.type+'" id="'+id+'" data-f="'+f.key+'" value="'+esc(val)+'" placeholder="'+esc(f.ph||'')+'"'+(f.suggest?' list="dl-'+ctx.uid+'-'+f.key+'"':'')+(f.min!=null?' min="'+f.min+'"':'')+(f.step?' step="'+f.step+'"':'')+(f.type==='number'?' inputmode="decimal"':'')+(f.type==='text'?' autocomplete="off"':'')+'>';
+  return '<div class="field'+(f.type==='textarea'?' full':'')+'"><label for="'+id+'">'+esc(f.label)+(f.req?' *':'')+'</label>'+input+(f.hint?'<span class="hint">'+esc(f.hint)+'</span>':'')+'</div>';
+}
+function sectionHTML(name,ctx){
+  const d=ctx.draft, u=ctx.uid;
+  if(name==='@tags'){
+    const used=new Set((d.tags||[]).map(t=>t.toLowerCase()));
+    const sug=tagIndex().filter(t=>!used.has(t.name.toLowerCase())).slice(0,14);
+    return '<div class="sect" data-sec="@tags"><div class="h3">Categorias (tags)</div>'+
+      '<div class="tagsin">'+(d.tags||[]).map(t=>'<span class="tag rm" data-act="f-tag-rm" data-tag="'+esc(t)+'" title="Remover">'+esc(t)+' ✕</span>').join('')+
+      '<input type="text" data-role="tag-in" list="dl-'+u+'-tags" placeholder="'+((d.tags||[]).length?'Outra tag…':'Digite uma tag e Enter (ex.: VR, Bateria)')+'" enterkeyhint="done" autocomplete="off" aria-label="Adicionar tag"></div>'+
+      '<div class="hint dim" style="margin-top:4px">Cada tag vira uma categoria na aba Categorias. Pode usar várias por item.</div>'+
+      (sug.length?'<div class="chips" style="margin-top:8px">'+sug.map(t=>'<button type="button" class="chip" data-act="f-tag-add" data-tag="'+esc(t.name)+'">+ '+esc(t.name)+'</button>').join('')+'</div>':'')+'</div>';
+  }
+  if(name==='@photos'){
+    const ph=d._photos||[];
+    return '<div class="sect" data-sec="@photos"><div class="h3">Fotos</div>'+
+      (!d._photosLoaded?'<div class="dim">Carregando fotos…</div>':
+      '<div class="photos">'+ph.map((p,i)=>'<div class="ph"><img alt="Foto '+(i+1)+'" src="'+esc(p.data)+'" data-act="f-photo-view" data-i="'+i+'"><button type="button" class="x" data-act="f-photo-rm" data-i="'+i+'" aria-label="Remover foto">✕</button>'+(i===0?'<span class="cv" style="cursor:default">capa</span>':'<button type="button" class="cv" data-act="f-photo-cover" data-i="'+i+'">tornar capa</button>')+'</div>').join('')+
+      (ph.length<8?'<label class="ph add">+ Adicionar<br>foto<input type="file" accept="image/*" multiple hidden data-role="photo-in"></label>':'')+'</div>')+
+      '<div class="hint dim" style="margin-top:4px">Até 8 fotos, comprimidas automaticamente. Tire na hora com a câmera ou escolha da galeria.</div></div>';
+  }
+  if(name==='@maintenance'){
+    const list=(d.maintenance||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    return '<div class="sect" data-sec="@maintenance"><div class="h3">Histórico de manutenção</div>'+
+      (list.length?list.map(x=>'<div class="mrow"><div><b>'+esc(fmtDate(x.date))+' · '+esc(x.type||'')+'</b>'+(x.cost?' <small>'+esc(money(x.cost))+'</small>':'')+'<br>'+esc(x.desc||'')+(x.by?' <small class="dim">— '+esc(x.by)+'</small>':'')+'</div><button type="button" class="btn sm danger" data-act="f-m-rm" data-mid="'+esc(x.id)+'" aria-label="Remover registro">✕</button></div>').join(''):'<div class="dim" style="margin-bottom:8px">Nenhum registro ainda.</div>')+
+      '<div class="fgrid" style="margin-top:10px"><div class="field"><label>Data</label><input type="date" data-role="m-date" value="'+todayISO()+'"></div>'+
+      '<div class="field"><label>Tipo</label><select data-role="m-type">'+MAINT_TYPES.map(t=>'<option>'+esc(t)+'</option>').join('')+'</select></div>'+
+      '<div class="field full"><label>O que foi feito</label><input type="text" data-role="m-desc" placeholder="Ex.: troca de almofada facial" autocomplete="off"></div>'+
+      '<div class="field"><label>Custo (R$)</label><input type="number" data-role="m-cost" min="0" step="0.01" inputmode="decimal"></div>'+
+      '<div class="field"><label>Responsável</label><input type="text" data-role="m-by" autocomplete="off"></div></div>'+
+      '<div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-act="f-m-add">+ Adicionar ao histórico</button></div></div>';
+  }
+  if(name==='@custom'){
+    return '<div class="sect" data-sec="@custom"><div class="h3">Campos extras</div><div class="hint dim" style="margin-bottom:8px">Para qualquer detalhe que não tem campo próprio (voltagem, cor, licença, tamanho…).</div>'+
+      (d.custom||[]).map((c,i)=>'<div class="crow"><input type="text" data-c="k" data-i="'+i+'" value="'+esc(c.k)+'" placeholder="Campo" list="dl-'+u+'-ckeys" aria-label="Nome do campo"><input type="text" data-c="v" data-i="'+i+'" value="'+esc(c.v)+'" placeholder="Valor" aria-label="Valor"><button type="button" class="btn sm danger" data-act="f-c-rm" data-i="'+i+'" aria-label="Remover campo">✕</button></div>').join('')+
+      '<button type="button" class="btn sm" data-act="f-c-add">+ Campo</button></div>';
+  }
+  if(name==='@qr'){
+    return '<div class="sect" data-sec="@qr"><div class="h3">QR Code</div><label class="check"><input type="checkbox" data-f="qrEnabled"'+(d.qrEnabled?' checked':'')+'> Gerar QR Code para colar no equipamento</label>'+
+      (d.qrEnabled?'<div style="margin-top:12px">'+qrBlockHTML(d)+'<div class="hint dim" style="margin-top:8px">O QR abre a ficha deste item neste app'+(ctx.mode==='create'?' — passa a funcionar depois de salvar':'')+'.</div></div>':'')+'</div>';
+  }
+  const fs=ITEM_FIELDS.filter(f=>f.sec===name&&(!f.showIf||f.showIf(d)));
+  if(!fs.length) return '';
+  return '<div class="sect" data-sec="'+esc(name)+'"><div class="h3">'+esc(name)+'</div><div class="fgrid">'+fs.map(f=>fieldHTML(f,ctx)).join('')+'</div></div>';
+}
+function formHTML(ctx){
+  const u=ctx.uid;
+  const ckeys=new Set(); S.items.forEach(it=>(it.custom||[]).forEach(c=>c.k&&ckeys.add(c.k)));
+  const dls=ITEM_FIELDS.filter(f=>f.suggest).map(f=>'<datalist id="dl-'+u+'-'+f.key+'">'+distinct(f.key).map(v=>'<option value="'+esc(v)+'"></option>').join('')+'</datalist>').join('')+
+    '<datalist id="dl-'+u+'-tags">'+tagIndex().map(t=>'<option value="'+esc(t.name)+'"></option>').join('')+'</datalist>'+
+    '<datalist id="dl-'+u+'-ckeys">'+Array.from(ckeys).map(k=>'<option value="'+esc(k)+'"></option>').join('')+'</datalist>';
+  const bar=ctx.mode==='create'
+    ?'<button type="button" class="btn pri" data-act="f-save">Salvar item</button><button type="button" class="btn" data-act="f-save-again">Salvar e cadastrar outro</button><button type="button" class="btn ghost" data-act="f-clear">Limpar</button>'
+    :'<button type="button" class="btn pri" data-act="f-save">Salvar alterações</button><button type="button" class="btn" data-act="f-cancel">Cancelar</button><button type="button" class="btn danger" style="margin-left:auto" data-act="f-delete">Excluir item</button>';
+  return dls+formLayout().map(n=>sectionHTML(n,ctx)).join('')+'<div class="actionbar">'+bar+'</div>';
+}
+
+function mountItemForm(root,opts){
+  const ctx={draft:opts.draft,mode:opts.mode,dirty:false,saving:false,root,opts,uid:Math.random().toString(36).slice(2,6)};
+  liveDrafts.set(ctx.draft.id,ctx.draft);
+  ctx.render=()=>{ const sc=opts.scroller, top=sc?sc.scrollTop:0; root.innerHTML=formHTML(ctx); if(sc) sc.scrollTop=top; fillQrSlots(root); };
+  ctx.renderSec=name=>{ const el=root.querySelector('[data-sec="'+name+'"]'); if(!el){ctx.render();return;} el.outerHTML=sectionHTML(name,ctx); if(name==='@qr') fillQrSlots(root); };
+  const role=r=>root.querySelector('[data-role="'+r+'"]');
+  const addTags=raw=>{
+    const inp=role('tag-in'); if(inp) inp.value='';   /* evita novo "change" durante o redesenho */
+    const d=ctx.draft; d.tags=d.tags||[];
+    String(raw||'').split(',').forEach(x=>{ const t=canonTag(x); if(t&&!d.tags.some(y=>y.toLowerCase()===t.toLowerCase())&&d.tags.length<12) d.tags.push(t); });
+    ctx.dirty=true; ctx.renderSec('@tags'); const i=role('tag-in'); if(i) i.focus();
+  };
+  root.addEventListener('input',e=>{
+    const t=e.target;
+    if(t.dataset.role==='tag-in'){ if(t.value.includes(',')) addTags(t.value); return; }
+    if(t.dataset.f){ ctx.draft[t.dataset.f]=t.type==='checkbox'?t.checked:t.value; ctx.dirty=true; }
+    else if(t.dataset.c){ const c=ctx.draft.custom[+t.dataset.i]; if(c){c[t.dataset.c]=t.value; ctx.dirty=true;} }
+  });
+  root.addEventListener('change',async e=>{
+    const t=e.target;
+    if(t.dataset.f){
+      const f=fieldByKey(t.dataset.f); ctx.draft[t.dataset.f]=t.type==='checkbox'?t.checked:t.value; ctx.dirty=true;
+      if(t.dataset.f==='qrEnabled') ctx.renderSec('@qr'); else if(f&&f.reflow) ctx.render();
+    }else if(t.dataset.role==='tag-in'){ if(t.isConnected&&t.value.trim()) addTags(t.value); }
+    else if(t.dataset.role==='photo-in'){ const files=Array.from(t.files||[]); t.value=''; await addPhotos(ctx,files); }
+  });
+  root.addEventListener('keydown',e=>{
+    const t=e.target;
+    if(t.dataset&&t.dataset.role==='tag-in'){
+      if(e.key==='Enter'){ e.preventDefault(); if(t.value.trim()) addTags(t.value); }
+      else if(e.key==='Backspace'&&!t.value&&(ctx.draft.tags||[]).length){ ctx.draft.tags.pop(); ctx.dirty=true; ctx.renderSec('@tags'); const i=role('tag-in'); if(i) i.focus(); }
     }
-
-    function renderCurrentView() {
-      const container = document.getElementById('view-content');
-      if (currentTab === 'general') renderGeneral(container);
-      else if (currentTab === 'register') renderRegister(container);
-      else if (currentTab === 'categories') renderCategories(container);
-      else if (currentTab === 'events') renderEvents(container);
-      lucide.createIcons();
+  });
+  root.addEventListener('click',async e=>{
+    const b=e.target.closest('[data-act]'); if(!b||!root.contains(b)) return;
+    const a=b.dataset.act, d=ctx.draft; if(a.indexOf('f-')!==0) return;
+    if(a==='f-tag-add') addTags(b.dataset.tag);
+    else if(a==='f-tag-rm'){ d.tags=(d.tags||[]).filter(x=>x!==b.dataset.tag); ctx.dirty=true; ctx.renderSec('@tags'); }
+    else if(a==='f-photo-rm'){ d._photos.splice(+b.dataset.i,1); ctx.dirty=true; ctx.renderSec('@photos'); }
+    else if(a==='f-photo-cover'){ const p=d._photos.splice(+b.dataset.i,1)[0]; d._photos.unshift(p); ctx.dirty=true; ctx.renderSec('@photos'); }
+    else if(a==='f-photo-view'){ const p=d._photos[+b.dataset.i]; if(p) openViewer(p.data); }
+    else if(a==='f-m-add'){
+      const desc=role('m-desc').value.trim(); if(!desc){toast('Descreva o que foi feito','warn');role('m-desc').focus();return;}
+      d.maintenance=(d.maintenance||[]).concat([{id:Math.random().toString(36).slice(2,10),date:role('m-date').value||todayISO(),type:role('m-type').value,desc,cost:num(role('m-cost').value)||0,by:role('m-by').value.trim()}]);
+      ctx.dirty=true; ctx.renderSec('@maintenance');
     }
-
-    // Helper: calculate headsets available on specific date
-    function getAvailabilityForDate(dateStr) {
-      const targetDate = dateStr ? new Date(dateStr) : new Date();
-      targetDate.setHours(12, 0, 0, 0);
-
-      const headsets = items.filter(i => i.isHeadset);
-      const totalHeadsets = headsets.length;
-      
-      const maintenanceHeadsets = headsets.filter(h => h.condition === 'manutencao' || h.condition === 'aposentado').length;
-
-      // Find events that overlap with this date
-      const activeEventsOnDate = events.filter(e => {
-        if (e.status === 'cancelado') return false;
-        const start = new Date(e.startDate);
-        const end = new Date(e.endDate || e.startDate);
-        start.setHours(0, 0, 0, 0);
-        end.setHours(23, 59, 59, 999);
-        return targetDate >= start && targetDate <= end;
-      });
-
-      const allocatedHeadsetIds = new Set();
-      activeEventsOnDate.forEach(ev => {
-        (ev.allocatedItemIds || []).forEach(id => {
-          const item = items.find(it => it.id === id);
-          if (item && item.isHeadset) allocatedHeadsetIds.add(id);
-        });
-      });
-
-      const inUseCount = allocatedHeadsetIds.size;
-      const availableCount = Math.max(0, totalHeadsets - inUseCount - maintenanceHeadsets);
-
-      return {
-        totalHeadsets,
-        availableCount,
-        inUseCount,
-        maintenanceHeadsets,
-        activeEventsOnDate
-      };
+    else if(a==='f-m-rm'){ d.maintenance=(d.maintenance||[]).filter(x=>x.id!==b.dataset.mid); ctx.dirty=true; ctx.renderSec('@maintenance'); }
+    else if(a==='f-c-add'){ d.custom=(d.custom||[]).concat([{k:'',v:''}]); ctx.dirty=true; ctx.renderSec('@custom'); const ins=root.querySelectorAll('[data-c="k"]'); if(ins.length) ins[ins.length-1].focus(); }
+    else if(a==='f-c-rm'){ d.custom.splice(+b.dataset.i,1); ctx.dirty=true; ctx.renderSec('@custom'); }
+    else if(a==='f-save') saveItemDraft(ctx,false);
+    else if(a==='f-save-again') saveItemDraft(ctx,true);
+    else if(a==='f-clear'){ if(!ctx.dirty||await confirmBox('Limpar tudo o que foi preenchido?',{ok:'Limpar',danger:true})){ liveDrafts.delete(d.id); S.createDraft=newDraft(); opts.remount&&opts.remount(); } }
+    else if(a==='f-cancel') opts.modal&&opts.modal.request();
+    else if(a==='f-delete') deleteItemFlow(ctx);
+  });
+  ctx.render();
+  return ctx;
+}
+async function addPhotos(ctx,files){
+  const d=ctx.draft, room=8-d._photos.length;
+  if(room<=0){toast('Limite de 8 fotos por item','warn');return;}
+  const list=files.slice(0,room); if(files.length>room) toast('Só cabem 8 fotos: as demais foram ignoradas','warn');
+  toast('Processando '+list.length+' foto(s)…','ok',1500);
+  for(const f of list){ try{ d._photos.push({id:newId(),data:await photoFromFile(f),isNew:true}); }catch(e){toast('Não consegui ler a foto '+f.name,'err');} }
+  ctx.dirty=true; ctx.renderSec('@photos');
+}
+async function saveItemDraft(ctx,again){
+  if(ctx.saving) return;
+  const d=ctx.draft, name=String(d.name||'').trim();
+  if(!name){ toast('Informe o nome do item','warn'); const i=ctx.root.querySelector('[data-f="name"]'); if(i){i.focus();i.scrollIntoView({block:'center'});} return; }
+  const isQty=d.mode==='qty', qty=Math.floor(num(d.qty));
+  if(isQty&&qty<1){ toast('A quantidade total deve ser 1 ou mais','warn'); return; }
+  if(isQty&&num(d.unavailQty)>qty){ toast('A quantidade indisponível não pode passar do total','warn'); return; }
+  const ser=norm(d.serial).trim();
+  if(ser){ const dup=S.items.find(x=>x.id!==d.id&&norm(x.serial).trim()===ser); if(dup){ toast('O nº de série já está no item “'+dup.name+'”','warn',4000); return; } }
+  if(ctx.mode==='edit'&&!d._photosLoaded){ toast('Aguarde as fotos terminarem de carregar','warn'); return; }
+  ctx.saving=true; $$('.actionbar .btn',ctx.root).forEach(b=>b.disabled=true);
+  try{
+    const now=Date.now(), data={};
+    PERSIST_KEYS.forEach(k=>{data[k]=d[k];});
+    ITEM_FIELDS.forEach(f=>{ if(f.type==='text'||f.type==='textarea') data[f.key]=String(d[f.key]||'').trim(); });
+    data.name=name; data.qty=isQty?qty:1; data.unavailQty=isQty?Math.floor(num(d.unavailQty)):0;
+    data.value=String(d.value).trim()===''?'':num(d.value);
+    if(data.status==='disponivel'||!(data.status==='manutencao'||data.status==='danificado')) data.backOn='';
+    data.tags=(d.tags||[]).slice(); data.maintenance=(d.maintenance||[]).slice();
+    data.custom=(d.custom||[]).filter(c=>String(c.k||'').trim()).map(c=>({k:String(c.k).trim(),v:String(c.v||'').trim()}));
+    data.qrEnabled=!!d.qrEnabled; data.updatedAt=now; if(ctx.mode==='create') data.createdAt=now;
+    const final=d._photos||[], orig=d._orig||[], keep=new Set(final.map(p=>p.id));
+    data.photoCount=final.length; data.thumb=final.length?await makeThumb(final[0].data):'';
+    if(JSON.stringify(data).length>200000){ toast('Item grande demais (muitas anotações). Reduza o texto.','err',4000); return; }
+    const ref=db.collection(COL.items).doc(d.id);
+    await runBatch(b=>{
+      b.set(ref,clean(data),{merge:true});
+      orig.filter(p=>!keep.has(p.id)).forEach(p=>b.delete(photoRef(p.id)));
+      final.forEach((p,i)=>{ if(p.isNew) b.set(photoRef(p.id),{itemId:d.id,data:p.data,ts:i,createdAt:now}); else if(p.ts!==i) b.update(photoRef(p.id),{ts:i}); });
+    });
+    S.photoCache.set(d.id,final.map((p,i)=>({id:p.id,data:p.data,ts:i})));
+    liveDrafts.delete(d.id);
+    if(ctx.mode==='edit'){ ctx.dirty=false; toast('Alterações salvas'); ctx.opts.modal.close(); return; }
+    toast('Item cadastrado');
+    const next=newDraft();
+    if(again){
+      ['model','brand','mode','qty','unavailQty','status','backOn','condition','location','acquiredOn','value','supplier','notes','qrEnabled','name'].forEach(k=>{next[k]=d[k];});
+      next.tags=(d.tags||[]).slice(); next.custom=clone(d.custom||[]);
     }
+    S.createDraft=next; ctx.opts.remount&&ctx.opts.remount();
+    const sc=ctx.opts.scroller; if(sc) sc.scrollTop=0;
+    if(again){ const i=$('#view-cadastrar [data-f="name"]'); if(i){i.focus();i.select();} }
+  }catch(e){ handleWriteError(e); }
+  finally{ ctx.saving=false; $$('.actionbar .btn',ctx.root).forEach(b=>b.disabled=false); }
+}
+async function deleteItemFlow(ctx){
+  const d=ctx.draft;
+  const uses=S.events.filter(ev=>ev._m.has(d.id));
+  const msg='Excluir “'+d.name+'” de vez?'+(uses.length?'\n\nEle será removido também de '+uses.length+' evento(s).':'')+'\n\nIsso não pode ser desfeito.';
+  if(!await confirmBox(msg,{ok:'Excluir item',danger:true,title:'Excluir item'})) return;
+  try{
+    let photos=[]; try{ photos=await getPhotos(d.id,true); }catch(e){}
+    await runBatch(b=>{
+      b.delete(db.collection(COL.items).doc(d.id));
+      photos.forEach(p=>b.delete(photoRef(p.id)));
+      uses.forEach(ev=>b.update(db.collection(COL.events).doc(ev.id),{alloc:ev.alloc.filter(a=>a.itemId!==d.id),updatedAt:Date.now()}));
+    });
+    S.photoCache.delete(d.id); liveDrafts.delete(d.id);
+    toast('Item excluído'); ctx.dirty=false;
+    if(S.detail) S.detail.close();
+    ctx.opts.modal.close();
+  }catch(e){ handleWriteError(e); }
+}
+function openItemEdit(id){
+  const it=S.itemsById.get(id); if(!it) return;
+  const draft=draftFromItem(it); let ctx=null;
+  const m=openModal({title:'Editar: '+it.name,cls:'wide',noBackdrop:true,body:'',
+    beforeClose:async()=>!ctx||!ctx.dirty||await confirmBox('Descartar as alterações deste item?',{ok:'Descartar',danger:true}),
+    onClose:()=>liveDrafts.delete(draft.id)});
+  ctx=mountItemForm(m.body,{draft,mode:'edit',scroller:m.body,modal:m});
+  if(it.photoCount) getPhotos(id,true).then(ph=>{
+    draft._orig=ph.map(p=>({id:p.id,data:p.data,ts:p.ts})); draft._photos=ph.map(p=>({id:p.id,data:p.data,ts:p.ts})); draft._photosLoaded=true;
+    if(m.el.isConnected) ctx.renderSec('@photos');
+  }).catch(e=>{ toast('Não foi possível carregar as fotos deste item','err'); if(e&&e.code==='permission-denied') showRulesHelp(); });
+}
+function renderCadastrar(){
+  const v=$('#view-cadastrar');
+  if(!S.createDraft) S.createDraft=newDraft();
+  if(v._ctx && v._ctx.draft===S.createDraft){ v._ctx.render(); return; }
+  v.innerHTML='<div class="card glow"><div class="h2"><span class="t">Cadastrar item</span></div><div class="dim" style="font-size:12px;margin-bottom:12px">Preencha o que souber — tudo pode ser editado depois na aba Categorias. Para cadastrar vários iguais, use “Salvar e cadastrar outro”.</div><div id="create-form"></div></div>';
+  v._ctx=mountItemForm($('#create-form',v),{draft:S.createDraft,mode:'create',scroller:$('#main'),remount:()=>renderCadastrar()});
+}
 
-    function renderGeneral(container) {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const selectedDate = window.selectedCheckDate || todayStr;
-      const stats = getAvailabilityForDate(selectedDate);
-      const totalItems = items.length;
-      const batteries = items.filter(i => i.tags && i.tags.some(t => t.toLowerCase().includes('bateria') || t.toLowerCase().includes('bobovr'))).length;
+/* =====================================================================
+   EVENTOS: lista e editor (com equipamentos e disponibilidade por data)
+   ===================================================================== */
+let evShell=false;
+function ensureEvShell(){
+  if(evShell) return; evShell=true;
+  $('#view-eventos').innerHTML='<div class="card"><div class="toolbar"><div class="grow1"><input type="search" id="e-q" placeholder="Buscar evento, cliente ou local…" aria-label="Buscar evento"></div><button class="btn pri" data-act="new-event">+ Novo evento</button></div><div class="chips" id="e-chips"></div></div><div class="card" style="margin-top:14px" id="e-list"></div>';
+  $('#e-q').value=S.ui.evq;
+}
+function evFiltered(){
+  const t=todayISO(), q=norm(S.ui.evq.trim()), f=S.ui.evFilter;
+  let l=S.events.filter(ev=>!q||norm([ev.name,ev.client,ev.place].join(' ')).includes(q));
+  const by={ativos:ev=>ev.status!=='cancelado'&&ev.end>=t,passados:ev=>ev.status!=='cancelado'&&ev.end<t,cancelados:ev=>ev.status==='cancelado',todos:()=>true};
+  const counts={}; Object.keys(by).forEach(k=>counts[k]=l.filter(by[k]).length);
+  l=l.filter(by[f]||by.ativos);
+  l.sort((a,b)=>f==='ativos'?a.start.localeCompare(b.start)||a.name.localeCompare(b.name):b.start.localeCompare(a.start));
+  return {list:l,counts};
+}
+function renderEventos(){
+  ensureEvShell();
+  if(!ready()){ $('#e-list').innerHTML='<div class="empty"><b>Carregando…</b></div>'; return; }
+  const {list,counts}=evFiltered();
+  $('#e-chips').innerHTML=[['ativos','Ativos'],['passados','Passados'],['cancelados','Cancelados'],['todos','Todos']].map(([k,n])=>'<button class="chip'+(S.ui.evFilter===k?' on':'')+'" data-act="ev-filter" data-f="'+k+'">'+n+'<span class="n">'+counts[k]+'</span></button>').join('');
+  $('#e-list').innerHTML=list.length?list.map(evRowHTML).join(''):'<div class="empty"><b>'+(S.events.length?'Nenhum evento neste filtro':'Nenhum evento ainda')+'</b>'+(S.events.length?'Troque o filtro acima.':'Crie o primeiro para reservar equipamentos por data.')+'<br><br><button class="btn pri" data-act="new-event">+ Novo evento</button></div>';
+}
 
-      container.innerHTML = `
-        <div class="space-y-6">
-          <!-- Quick Status Cards -->
-          <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5">
-              <span class="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Headsets VR</span>
-              <div class="text-2xl sm:text-3xl font-bold text-white mt-1">${stats.totalHeadsets}</div>
-              <span class="text-xs text-slate-500 mt-1 block">Meta Quest 2, 3 e outros</span>
-            </div>
-            <div class="bg-slate-900 border border-emerald-500/30 rounded-xl p-4 sm:p-5 bg-gradient-to-b from-emerald-500/5 to-transparent">
-              <span class="text-xs text-emerald-400 font-medium uppercase tracking-wider">Livres na Data</span>
-              <div class="text-2xl sm:text-3xl font-bold text-emerald-400 mt-1">${stats.availableCount}</div>
-              <span class="text-xs text-slate-400 mt-1 block">${stats.totalHeadsets > 0 ? Math.round((stats.availableCount/stats.totalHeadsets)*100) : 0}% disponíveis</span>
-            </div>
-            <div class="bg-slate-900 border border-amber-500/30 rounded-xl p-4 sm:p-5">
-              <span class="text-xs text-amber-400 font-medium uppercase tracking-wider">Alocados / Em Evento</span>
-              <div class="text-2xl sm:text-3xl font-bold text-amber-400 mt-1">${stats.inUseCount}</div>
-              <span class="text-xs text-slate-400 mt-1 block">Em uso na data escolhida</span>
-            </div>
-            <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 sm:p-5">
-              <span class="text-xs text-slate-400 font-medium uppercase tracking-wider">Baterias & Acessórios</span>
-              <div class="text-2xl sm:text-3xl font-bold text-cyan-400 mt-1">${batteries}</div>
-              <span class="text-xs text-slate-500 mt-1 block">BoboVR e itens cadastrados</span>
-            </div>
-          </div>
+/* disponibilidade de um item no período do evento em edição */
+function itemAvail(it,a,b,ov){
+  let min=Infinity, minUse=Infinity;
+  for(const d of eachDay(a,b)){ const us=usableQty(it,d); minUse=Math.min(minUse,us); min=Math.min(min,us-reservedFor(it.id,d,ov)); }
+  if(!isFinite(min)) return {free:0,reason:''};
+  let reason='';
+  if(min<=0){
+    if(minUse<=0) reason=label(STATUS,it.status).toLowerCase();
+    else { const names=S.events.filter(ev=>ev.status!=='cancelado'&&ev.id!==(ov&&ov.exclude)&&ev._m.has(it.id)&&ev.start<=b&&ev.end>=a).map(ev=>ev.name); reason='em uso: '+(names.slice(0,2).join(', ')||'outro evento')+(names.length>2?'…':''); }
+  }
+  return {free:Math.max(0,min),reason};
+}
 
-          <!-- Date Availability Checker Widget -->
-          <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl">
-            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
-              <div>
-                <h3 class="text-base sm:text-lg font-bold text-white flex items-center gap-2">
-                  <span>📅</span> Checador Inteligente de Disponibilidade por Data
-                </h3>
-                <p class="text-xs sm:text-sm text-slate-400 mt-0.5">
-                  Consulte qualquer data futura para saber se você possui headsets suficientes para marcar outro evento.
-                </p>
-              </div>
-              <div class="flex items-center gap-2">
-                <label class="text-xs text-slate-400 font-medium">Data Alvo:</label>
-                <input type="date" id="date-picker-input" value="${selectedDate}" onchange="window.selectedCheckDate = this.value; renderCurrentView();" class="bg-slate-950 border border-slate-700 text-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:border-cyan-500" />
-              </div>
-            </div>
+function openEvent(id,presetDate){
+  const src=id?S.events.find(e=>e.id===id):null;
+  if(id&&!src){ toast('Evento não encontrado','warn'); return; }
+  if(!db){ toast('Firebase indisponível','err'); return; }
+  const day=presetDate||todayISO();
+  const draft=src?{id:src.id,name:src.name,client:src.client||'',place:src.place||'',start:src.start,end:src.end,status:src.status,notes:src.notes||'',alloc:clone(src.alloc)}
+    :{id:db.collection(COL.events).doc().id,name:'',client:'',place:'',start:day,end:day,status:'planejado',notes:'',alloc:[]};
+  const isNew=!src, ctx={draft,isNew,dirty:false,saving:false,q:'',tag:'all'};
+  const m=openModal({title:isNew?'Novo evento':'Evento: '+draft.name,cls:'wide',foot:true,noBackdrop:true,body:'',
+    beforeClose:async()=>!ctx.dirty||await confirmBox('Descartar as alterações deste evento?',{ok:'Descartar',danger:true})});
+  m.foot.innerHTML=(isNew?'':'<button class="btn danger" data-e="del" style="margin-right:auto">Excluir</button>')+'<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-e="save">Salvar evento</button>';
+  const tags=tagIndex();
+  m.body.innerHTML=
+   '<div class="sect"><div class="fgrid">'+
+    '<div class="field full"><label for="ev-name">Nome do evento *</label><input type="text" id="ev-name" data-ef="name" placeholder="Ex.: Feira Tech — estande da empresa X" autocomplete="off"></div>'+
+    '<div class="field"><label for="ev-client">Cliente</label><input type="text" id="ev-client" data-ef="client" autocomplete="off"></div>'+
+    '<div class="field"><label for="ev-place">Local</label><input type="text" id="ev-place" data-ef="place" autocomplete="off"></div>'+
+    '<div class="field"><label for="ev-start">Início *</label><input type="date" id="ev-start" data-ef="start"></div>'+
+    '<div class="field"><label for="ev-end">Fim *</label><input type="date" id="ev-end" data-ef="end"></div>'+
+    '<div class="field"><label for="ev-status">Situação</label><select id="ev-status" data-ef="status">'+EV_STATUS.map(s=>'<option value="'+s[0]+'">'+s[1]+'</option>').join('')+'</select><span class="hint">Cancelado libera os equipamentos</span></div>'+
+    '<div class="field full"><label for="ev-notes">Observações</label><textarea id="ev-notes" data-ef="notes"></textarea></div></div></div>'+
+   '<div class="sect"><div id="ev-sum"></div></div>'+
+   '<div class="sect"><div class="h3">Adicionar equipamento</div>'+
+     '<div id="ev-quick" style="margin-bottom:10px"></div>'+
+     '<div class="toolbar"><div class="grow1"><input type="search" id="ev-pq" placeholder="Buscar por nome, modelo ou série…" aria-label="Buscar equipamento"></div>'+
+     '<select id="ev-ptag" style="width:auto" aria-label="Categoria"><option value="all">Todas as categorias</option>'+tags.map(t=>'<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>').join('')+'</select></div>'+
+     '<div class="pick" id="ev-pick"></div></div>';
+  ['name','client','place','start','end','status','notes'].forEach(k=>{ $('[data-ef="'+k+'"]',m.body).value=draft[k]; });
 
-            <div class="mt-4 p-4 rounded-xl border ${stats.availableCount > 0 ? 'bg-emerald-950/20 border-emerald-500/30' : 'bg-rose-950/20 border-rose-500/30'} flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <span class="text-xs uppercase font-semibold ${stats.availableCount > 0 ? 'text-emerald-400' : 'text-rose-400'}">
-                  ${stats.availableCount > 0 ? '✓ Disponibilidade Confirmada' : '⚠️ Atenção: Capacidade Esgotada'}
-                </span>
-                <p class="text-sm text-slate-200 mt-0.5 font-medium">
-                  Em <strong>${new Date(selectedDate + 'T12:00:00').toLocaleDateString('pt-BR')}</strong>: você possui 
-                  <strong class="text-cyan-400">${stats.availableCount}</strong> headsets livres de um total de <strong>${stats.totalHeadsets}</strong>.
-                </p>
-              </div>
-              <button onclick="switchTab('events')" class="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-medium text-xs rounded-lg transition">
-                + Agendar Evento Nesta Data
-              </button>
-            </div>
-          </div>
-        </div>
-      `;
+  const allocMap=()=>{const mp=new Map(); draft.alloc.forEach(a=>mp.set(a.itemId,(mp.get(a.itemId)||0)+num(a.qty))); return mp;};
+  const validDates=()=>draft.start&&draft.end&&draft.end>=draft.start&&diffDays(draft.start,draft.end)<400;
+  const getOv=()=>({exclude:isNew?null:draft.id,extra:draft.status==='cancelado'?null:allocMap(),range:[draft.start,draft.end]});
+  const problems=ov=>{
+    const out=new Map();
+    if(draft.status==='cancelado') return out;
+    for(const a of draft.alloc){
+      const it=S.itemsById.get(a.itemId); if(!it){out.set(a.itemId,'item removido do estoque');continue;}
+      const bad=eachDay(draft.start,draft.end).filter(d=>reservedFor(it.id,d,ov)>usableQty(it,d));
+      if(bad.length){ const why=usableQty(it,bad[0])===0?label(STATUS,it.status).toLowerCase():'já reservado em outro evento'; out.set(a.itemId,why+' em '+fmtShort(bad[0])+(bad.length>1?' (+'+(bad.length-1)+' dia(s))':'')); }
     }
+    return out;
+  };
+  const renderSum=()=>{
+    const box=$('#ev-sum',m.el);
+    if(!validDates()){ box.innerHTML='<div class="empty"><b>Defina as datas do evento</b>O fim deve ser igual ou depois do início.</div>'; return; }
+    const ov=getOv(), pr=problems(ov), days=diffDays(draft.start,draft.end)+1;
+    const rows=draft.alloc.map(a=>({a,it:S.itemsById.get(a.itemId)})).sort((x,y)=>(x.it?groupKey(x.it):'~').localeCompare(y.it?groupKey(y.it):'~','pt')||(x.it?x.it.name:'').localeCompare(y.it?y.it.name:'','pt',{numeric:true}));
+    const gm=new Map(); rows.forEach(({a,it})=>{ if(!it) return; const k=groupKey(it); gm.set(k,(gm.get(k)||0)+num(a.qty)); });
+    const sumRows=Array.from(gm,([k,n])=>{ const st=rangeStats(S.items.filter(i=>groupKey(i)===k),draft.start,draft.end,ov); return '<tr><td>'+esc(k)+'</td><td>'+n+'</td><td class="'+(st.F===0?'bad':'good')+'"><b>'+st.F+'</b></td></tr>'; }).join('');
+    const total=draft.alloc.reduce((s,a)=>s+num(a.qty),0);
+    box.innerHTML='<div class="h3" style="margin-top:0">Equipamentos do evento · '+total+' un.</div>'+
+      '<div class="dim" style="font-size:12px;margin-bottom:8px">'+esc(fmtRange(draft.start,draft.end))+' · '+days+' dia(s). Ao salvar, estes itens ficam indisponíveis nessas datas na tela Geral.</div>'+
+      (sumRows?'<table class="sumtbl"><tr><th>Modelo</th><th>No evento</th><th>Sobram</th></tr>'+sumRows+'</table><div style="height:10px"></div>':'')+
+      (rows.length?rows.map(({a,it})=>{
+        const p=pr.get(a.itemId), isQ=it&&it.mode==='qty';
+        return '<div class="arow'+(p?' bad':'')+'"><div style="min-width:0"><b>'+esc(it?it.name:'(item removido)')+'</b><br><small class="dim">'+esc(it?[it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · '):'')+'</small>'+(p?'<br><small class="bad">⚠ '+esc(p)+'</small>':'')+'</div>'+
+          '<div class="row">'+(isQ?'<input type="number" class="qty" min="1" max="'+totalQty(it)+'" value="'+num(a.qty)+'" data-eq="'+esc(a.itemId)+'" aria-label="Quantidade">':'')+'<button class="btn sm danger" data-e="rm" data-id="'+esc(a.itemId)+'" aria-label="Remover do evento">✕</button></div></div>';
+      }).join(''):'<div class="empty">Nenhum equipamento separado ainda.<br>Use a busca abaixo para adicionar um por um.</div>');
+  };
+  const renderQuick=()=>{
+    const box=$('#ev-quick',m.el);
+    if(!validDates()){ box.innerHTML=''; return; }
+    const ov=getOv(), groups=groupsOf(S.items);
+    box.innerHTML='<div class="row"><span class="lbl">Atalho:</span><input type="number" class="qty" min="1" value="1" data-role="qn" aria-label="Quantidade" inputmode="numeric"><span>×</span><select data-role="qm" style="width:auto;max-width:100%;flex:1;min-width:140px" aria-label="Modelo">'+
+      groups.map(g=>{ const st=rangeStats(g.items,draft.start,draft.end,ov); return '<option value="'+esc(g.key)+'">'+esc(g.key)+' ('+st.F+' livres)</option>'; }).join('')+
+      '</select><button class="btn sm blue" data-e="quick">Adicionar livres</button></div>';
+  };
+  const renderPick=()=>{
+    const box=$('#ev-pick',m.el);
+    if(!validDates()){ box.innerHTML='<div class="empty" style="border:0">Defina as datas para ver a disponibilidade.</div>'; return; }
+    const ov=getOv(), q=norm(ctx.q.trim()), inEv=allocMap();
+    let list=S.items.filter(it=>!inEv.has(it.id)&&(ctx.tag==='all'||hasTag(it,ctx.tag))&&(!q||q.split(/\s+/).every(w=>itemSearchText(it).includes(w))));
+    const info=new Map(list.map(it=>[it.id,itemAvail(it,draft.start,draft.end,ov)]));
+    list.sort((a,b)=>(info.get(b.id).free>0)-(info.get(a.id).free>0)||groupKey(a).localeCompare(groupKey(b),'pt')||a.name.localeCompare(b.name,'pt',{numeric:true}));
+    const shown=list.slice(0,60);
+    box.innerHTML=shown.length?shown.map(it=>{
+      const av=info.get(it.id), ok=av.free>0, isQ=it.mode==='qty';
+      return '<div class="arow"><div style="min-width:0"><b>'+esc(it.name)+'</b><br><small class="dim">'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||groupKey(it))+'</small><br>'+
+        (ok?'<small class="good">'+(isQ?av.free+' livres nas datas':'livre nas datas')+'</small>':'<small class="bad">indisponível — '+esc(av.reason)+'</small>')+'</div>'+
+        '<div class="row">'+(isQ&&ok?'<input type="number" class="qty" min="1" max="'+av.free+'" value="1" data-pq="'+esc(it.id)+'" aria-label="Quantidade">':'')+'<button class="btn sm" data-e="add" data-id="'+esc(it.id)+'"'+(ok?'':' disabled')+'>Adicionar</button></div></div>';
+    }).join('')+(list.length>60?'<div class="dim" style="padding:6px;font-size:12px">Mostrando 60 de '+list.length+'. Refine a busca.</div>':''):'<div class="empty" style="border:0">'+(S.items.length?'Nenhum item encontrado (ou todos já estão no evento).':'Cadastre itens primeiro na aba Cadastrar.')+'</div>';
+  };
+  const renderAll=()=>{ renderSum(); renderQuick(); renderPick(); };
+  renderAll();
 
-    function renderRegister(container) {
-      container.innerHTML = `
-        <div class="max-w-3xl mx-auto bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-8 shadow-xl">
-          <h2 class="text-xl font-bold text-white mb-1">Cadastrar Novo Equipamento</h2>
-          <p class="text-sm text-slate-400 mb-6">Cadastre headsets, baterias BoboVR, cabos, PCs ou materiais com geração automática de etiqueta QR Code.</p>
-          
-          <form id="item-form" onsubmit="handleSaveItem(event)" class="space-y-4">
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Nome / Identificador *</label>
-                <input required id="item-name" placeholder="Ex: Meta Quest 3 #01" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Modelo *</label>
-                <input required id="item-model" placeholder="Ex: Quest 3 128GB, BoboVR M3, etc." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none" />
-              </div>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Número de Série (Serial Number) *</label>
-                <input required id="item-sn" placeholder="Ex: 1WMHH8178C9021" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm font-mono text-cyan-300 focus:border-cyan-500 focus:outline-none" />
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Tags / Categorias (separadas por vírgula)</label>
-                <input id="item-tags" placeholder="Ex: VR, Meta, Headset, Bateria, Escritorio" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none" />
-              </div>
-            </div>
-
-            <div class="p-3 bg-slate-950 border border-slate-800 rounded-xl flex items-center gap-3">
-              <input type="checkbox" id="item-is-headset" checked class="w-4 h-4 accent-cyan-500 rounded" />
-              <label for="item-is-headset" class="text-sm font-medium text-slate-200 cursor-pointer">
-                Este item é um Headset VR (Contabiliza na capacidade e disponibilidade geral)
-              </label>
-            </div>
-
-            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Estado de Conservação</label>
-                <select id="item-condition" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none">
-                  <option value="novo">Novo na Caixa</option>
-                  <option value="excelente" selected>Excelente (Sem marcas)</option>
-                  <option value="bom">Bom (Marcas leves de uso)</option>
-                  <option value="avarias">Com Avarias (Funcional)</option>
-                  <option value="manutencao">Em Manutenção</option>
-                  <option value="aposentado">Aposentado / Baixa</option>
-                </select>
-              </div>
-              <div>
-                <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Status Atual</label>
-                <select id="item-status" class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none">
-                  <option value="disponivel" selected>Disponível</option>
-                  <option value="em_evento">Em Evento</option>
-                  <option value="manutencao">Manutenção</option>
-                  <option value="reservado">Reservado</option>
-                </select>
-              </div>
-            </div>
-
-            <div>
-              <label class="block text-xs font-semibold text-slate-300 uppercase mb-1">Observações e Histórico Inicial</label>
-              <textarea id="item-notes" rows="2" placeholder="Observações de acessórios, número da nota fiscal, lentes especiais, etc." class="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:border-cyan-500 focus:outline-none"></textarea>
-            </div>
-
-            <button type="submit" class="w-full py-3 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold rounded-xl transition shadow-lg shadow-cyan-500/20">
-              Salvar Item e Gerar QR Code
-            </button>
-          </form>
-        </div>
-      `;
+  const setAlloc=(itemId,qty)=>{ const a=draft.alloc.find(x=>x.itemId===itemId); if(a) a.qty=qty; else draft.alloc.push({itemId,qty}); ctx.dirty=true; };
+  m.body.addEventListener('input',e=>{
+    const t=e.target;
+    if(t.dataset.ef){ draft[t.dataset.ef]=t.value; ctx.dirty=true; if(t.dataset.ef==='name') m.setTitle(t.value?'Evento: '+t.value:'Novo evento'); }
+    else if(t.id==='ev-pq'){ ctx.q=t.value; renderPick(); }
+  });
+  m.body.addEventListener('change',e=>{
+    const t=e.target;
+    if(t.dataset.ef){
+      draft[t.dataset.ef]=t.value; ctx.dirty=true;
+      if(t.dataset.ef==='start'&&draft.end<draft.start){ draft.end=draft.start; $('#ev-end',m.el).value=draft.end; }
+      if(t.dataset.ef==='end'&&draft.end<draft.start){ toast('O fim não pode ser antes do início','warn'); draft.end=draft.start; t.value=draft.end; }
+      if(['start','end','status'].includes(t.dataset.ef)) renderAll();
+    }else if(t.id==='ev-ptag'){ ctx.tag=t.value; renderPick(); }
+    else if(t.dataset.eq){ const it=S.itemsById.get(t.dataset.eq); const max=it?totalQty(it):9999; let q=Math.floor(num(t.value)); if(q<1)q=1; if(q>max)q=max; t.value=q; setAlloc(t.dataset.eq,q); renderSum(); renderPick(); renderQuick(); }
+  });
+  m.el.addEventListener('click',async e=>{
+    const b=e.target.closest('[data-e]'); if(!b) return; const a=b.dataset.e;
+    if(a==='add'){
+      const it=S.itemsById.get(b.dataset.id); if(!it) return;
+      const qi=$('[data-pq="'+b.dataset.id+'"]',m.el); let q=qi?Math.floor(num(qi.value)):1; if(q<1) q=1;
+      const av=itemAvail(it,draft.start,draft.end,getOv()); if(q>av.free) q=av.free; if(q<1) return;
+      setAlloc(it.id,q); renderSum(); renderPick(); renderQuick();
+    }else if(a==='rm'){
+      draft.alloc=draft.alloc.filter(x=>x.itemId!==b.dataset.id); ctx.dirty=true; renderSum(); renderPick(); renderQuick();
+    }else if(a==='quick'){
+      const n=Math.max(1,Math.floor(num($('[data-role="qn"]',m.el).value))), key=$('[data-role="qm"]',m.el).value;
+      const inEv=allocMap(), ov=getOv(); let need=n, added=0;
+      const cand=S.items.filter(it=>groupKey(it)===key&&!inEv.has(it.id)).sort((x,y)=>x.name.localeCompare(y.name,'pt',{numeric:true}));
+      for(const it of cand){ if(need<=0) break; const f=itemAvail(it,draft.start,draft.end,ov).free; if(f<=0) continue; const take=Math.min(f,need); setAlloc(it.id,take); need-=take; added+=take; }
+      if(added===0) toast('Nenhum item livre de “'+key+'” nessas datas','warn',3500);
+      else if(need>0) toast('Só havia '+added+' livre(s): faltam '+need,'warn',4000);
+      else toast(added+' × '+key+' adicionado(s)');
+      renderSum(); renderPick(); renderQuick();
+    }else if(a==='save') saveEvent();
+    else if(a==='del'){
+      if(!await confirmBox('Excluir o evento “'+draft.name+'”?\nOs equipamentos voltam a ficar livres nessas datas.',{ok:'Excluir evento',danger:true,title:'Excluir evento'})) return;
+      try{ await runBatch(bt=>bt.delete(db.collection(COL.events).doc(draft.id))); ctx.dirty=false; toast('Evento excluído'); m.close(); }catch(err){handleWriteError(err);}
     }
+  });
+  async function saveEvent(){
+    if(ctx.saving) return;
+    const name=String(draft.name||'').trim();
+    if(!name){ toast('Informe o nome do evento','warn'); $('#ev-name',m.el).focus(); return; }
+    if(!validDates()){ toast('Confira as datas: o fim deve ser igual ou depois do início','warn'); return; }
+    const pr=problems(getOv());
+    if(pr.size && !await confirmBox(pr.size+' equipamento(s) estão indisponíveis ou reservados em duplicidade nessas datas.\nSalvar mesmo assim?',{ok:'Salvar mesmo assim',title:'Conflito de equipamentos'})) return;
+    ctx.saving=true; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=true);
+    try{
+      const now=Date.now();
+      const data={name,client:String(draft.client||'').trim(),place:String(draft.place||'').trim(),start:draft.start,end:draft.end,status:draft.status,notes:String(draft.notes||'').trim(),
+        alloc:draft.alloc.filter(a=>num(a.qty)>0).map(a=>({itemId:a.itemId,qty:Math.floor(num(a.qty))})),updatedAt:now};
+      if(isNew) data.createdAt=now;
+      await runBatch(bt=>bt.set(db.collection(COL.events).doc(draft.id),data,{merge:true}));
+      ctx.dirty=false; toast(isNew?'Evento criado':'Evento salvo'); m.close();
+    }catch(err){ handleWriteError(err); ctx.saving=false; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=false); }
+  }
+  setTimeout(()=>{ if(isNew){ const i=$('#ev-name',m.el); if(i&&!matchMedia('(pointer:coarse)').matches) i.focus(); } },50);
+}
 
-    function handleSaveItem(e) {
-      e.preventDefault();
-      const name = document.getElementById('item-name').value.trim();
-      const model = document.getElementById('item-model').value.trim();
-      const serialNumber = document.getElementById('item-sn').value.trim();
-      const rawTags = document.getElementById('item-tags').value;
-      const tags = rawTags.split(',').map(t => t.trim()).filter(Boolean);
-      const isHeadset = document.getElementById('item-is-headset').checked;
-      const condition = document.getElementById('item-condition').value;
-      const status = document.getElementById('item-status').value;
-      const notes = document.getElementById('item-notes').value.trim();
+/* =====================================================================
+   INICIALIZAÇÃO: abas, dados em tempo real, eventos globais, links de QR
+   ===================================================================== */
+S.day=todayISO();
+const unsubs=[];
+function stopData(){ while(unsubs.length){ try{unsubs.pop()();}catch(e){} } S.loaded={items:false,events:false}; }
 
-      const newItem = {
-        id: 'vr_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5),
-        name,
-        model,
-        serialNumber,
-        tags: tags.length ? tags : ['VR'],
-        category: tags[0] || (isHeadset ? 'Headset' : 'Acessórios'),
-        isHeadset,
-        condition,
-        status,
-        notes,
-        maintenanceHistory: [],
-        createdAt: new Date().toISOString(),
-      };
+function renderActive(fromData){
+  const t=S.tab;
+  if(t==='geral') renderGeral();
+  else if(t==='categorias') renderCategorias();
+  else if(t==='eventos') renderEventos();
+  else if(t==='cadastrar'){ if(!fromData||!$('#view-cadastrar')._ctx) renderCadastrar(); }
+  if(S.detail&&S.detail.el.isConnected){
+    const f=$('#m-form',S.detail.el), d=$('#m-desc',S.detail.el), typing=f&&!f.classList.contains('hide')&&d&&d.value.trim()!=='';
+    if(!typing) renderDetail(S.detail);
+  }
+}
+let rtimer=null;
+function scheduleRender(){ if(rtimer) return; rtimer=setTimeout(()=>{rtimer=null;renderActive(true);},30); }
+function setTab(t){
+  S.tab=t;
+  $$('#tabs button').forEach(b=>{const on=b.dataset.tab===t; b.classList.toggle('active',on); b.setAttribute('aria-selected',on?'true':'false');});
+  $$('.view').forEach(v=>v.classList.toggle('active',v.id==='view-'+t));
+  renderActive(false);
+  $('#main').scrollTop=0;
+}
 
-      items.unshift(newItem);
-      persist();
+/* ---------- dados em tempo real (Firestore onSnapshot) ---------- */
+function checkPending(){
+  if(!S.pendingItem||!ready()) return;
+  const id=S.pendingItem; S.pendingItem=null;
+  if(S.itemsById.has(id)) openItem(id); else toast('Item do QR Code não encontrado (foi excluído?)','warn',4000);
+}
+function startData(){
+  stopData(); if(!db) return;
+  const c={items:true,events:true}, p={items:false,events:false};
+  const upd=()=>{S.sync.fromCache=c.items||c.events; S.sync.pending=p.items||p.events; updateSync();};
+  const onErr=e=>{
+    console.error(e); S.loadError=(e&&e.code)||'erro';
+    if(S.loadError==='permission-denied'){ showBanner('<span>O Firebase bloqueou o acesso ao estoque.</span><button class="btn sm" data-act="rules">Como liberar</button>','err'); showRulesHelp(); }
+    else showBanner('<span>Erro ao sincronizar: '+esc((e&&e.message)||S.loadError)+'</span>','err');
+    renderActive(true); updateSync();
+  };
+  const ok=()=>{ if(S.loadError){ S.loadError=null; showBanner(''); } };
+  unsubs.push(db.collection(COL.items).onSnapshot({includeMetadataChanges:true},snap=>{
+    const first=!S.loaded.items; c.items=snap.metadata.fromCache; p.items=snap.metadata.hasPendingWrites;
+    const changed=first||snap.docChanges().length>0;
+    if(changed){ S.items=snap.docs.map(d=>normItem(d.id,d.data())); S.itemsById=new Map(S.items.map(i=>[i.id,i])); S.loaded.items=true; ok(); }
+    upd(); if(changed){ scheduleRender(); checkPending(); }
+  },onErr));
+  unsubs.push(db.collection(COL.events).onSnapshot({includeMetadataChanges:true},snap=>{
+    const first=!S.loaded.events; c.events=snap.metadata.fromCache; p.events=snap.metadata.hasPendingWrites;
+    const changed=first||snap.docChanges().length>0;
+    if(changed){ S.events=snap.docs.map(d=>normEvent(d.id,d.data())); S.loaded.events=true; ok(); }
+    upd(); if(changed){ scheduleRender(); checkPending(); }
+  },onErr));
+  unsubs.push(db.collection(COL.meta).doc('config').onSnapshot(s=>{ S.meta=s.exists?(s.data()||{}):{}; scheduleRender(); },()=>{}));
+}
 
-      if (db) {
-        db.collection('vr_fleet_management_items').doc(newItem.id).set(newItem);
-      }
+/* ---------- login opcional (REQUIRE_LOGIN = true) ---------- */
+function showLogin(){
+  if($('#login-box')) return;
+  const m=openModal({title:'Entrar no VR Estoque',cls:'small',foot:true,noBackdrop:true,beforeClose:async()=>!!S.user,
+    body:'<div id="login-box" class="stack"><div class="field"><label for="lg-mail">E-mail</label><input type="email" id="lg-mail" autocomplete="username"></div><div class="field"><label for="lg-pass">Senha</label><input type="password" id="lg-pass" autocomplete="current-password"></div><div id="lg-err" class="bad" style="font-size:12px"></div></div>'});
+  const x=$('[data-mclose]',m.el); if(x) x.classList.add('hide');
+  m.foot.innerHTML='<button class="btn pri" data-x="login">Entrar</button>';
+  const go=async()=>{
+    try{ $('#lg-err',m.el).textContent=''; await auth.signInWithEmailAndPassword($('#lg-mail',m.el).value.trim(),$('#lg-pass',m.el).value); }
+    catch(e){ $('#lg-err',m.el).textContent='Não foi possível entrar: '+(e.code||e.message); }
+  };
+  m.el.addEventListener('click',e=>{ if(e.target.closest('[data-x="login"]')) go(); });
+  m.el.addEventListener('keydown',e=>{ if(e.key==='Enter') go(); });
+}
 
-      alert('Item cadastrado com sucesso!');
-      switchTab('categories');
-    }
+/* ---------- link do QR Code: #item=ID ---------- */
+function readHash(){
+  const mm=/[#&]item=([^&]+)/.exec(location.hash); if(!mm) return;
+  S.pendingItem=decodeURIComponent(mm[1]);
+  try{ history.replaceState(null,'',location.href.split('#')[0]); }catch(e){}
+  checkPending();
+}
 
-    function renderCategories(container) {
-      if (items.length === 0) {
-        container.innerHTML = `
-          <div class="text-center py-16 bg-slate-900 border border-slate-800 rounded-2xl">
-            <p class="text-lg text-slate-300 font-semibold">Nenhum item cadastrado no estoque ainda</p>
-            <p class="text-sm text-slate-500 mt-1 mb-4">Cadastre seus Meta Quests, BoboVRs ou PCs para iniciar seu gerenciamento.</p>
-            <button onclick="switchTab('register')" class="px-5 py-2.5 bg-cyan-500 text-slate-950 font-bold text-sm rounded-xl">
-              + Cadastrar Primeiro Item
-            </button>
-          </div>
-        `;
-        return;
-      }
+/* ---------- cliques globais ---------- */
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-act]'); if(!b) return;
+  const a=b.dataset.act, id=b.dataset.id;
+  switch(a){
+    case 'goto': setTab(b.dataset.tab); break;
+    case 'goto-off':
+      S.ui.cstatus='fora'; S.ui.ctag='all'; S.ui.q=''; setTab('categorias');
+      { const s=$('#c-status'); if(s) s.value='fora'; const q=$('#c-q'); if(q) q.value=''; renderCategorias(); }
+      break;
+    case 'open-item': openItem(id); break;
+    case 'open-event': openEvent(id); break;
+    case 'new-event': openEvent(null,b.dataset.date); break;
+    case 'pick-day': S.ui.date=b.dataset.date; S.ui.end=''; S.ui.month=b.dataset.date.slice(0,7); renderGeral(); break;
+    case 'cal-prev': case 'cal-next': {
+      const [y,m]=S.ui.month.split('-').map(Number), d=new Date(y,m-1+(a==='cal-next'?1:-1),1,12);
+      S.ui.month=iso(d).slice(0,7); renderGeral(); break; }
+    case 'g-today': S.ui.date=todayISO(); S.ui.end=''; S.ui.month=S.ui.date.slice(0,7); renderGeral(); break;
+    case 'g-clear-end': S.ui.end=''; renderGeral(); break;
+    case 'c-tag': S.ui.ctag=b.dataset.tag; renderCategorias(); break;
+    case 'c-view': S.ui.cview=S.ui.cview==='group'?'flat':'group'; savePrefs(); renderCategorias(); break;
+    case 'c-labels': { const l=filteredItems().filter(i=>i.qrEnabled); openLabels(l); break; }
+    case 'ev-filter': S.ui.evFilter=b.dataset.f; savePrefs(); renderEventos(); break;
+    case 'settings': openSettings(); break;
+    case 'rules': showRulesHelp(); break;
+    case 'qr-copy': try{await loadQrLib();copyQr(id);}catch(x){toast(x.message,'err',4000);} break;
+    case 'qr-png': try{await loadQrLib();downloadQr(id,b.dataset.name);}catch(x){toast(x.message,'err',4000);} break;
+    case 'qr-print': { const it=S.itemsById.get(id)||liveDrafts.get(id); openLabels(it?[it]:[]); break; }
+    case 'qr-link': copyText(itemUrl(id),'Link copiado'); break;
+  }
+});
+document.addEventListener('change',e=>{
+  const t=e.target;
+  if(t.id==='g-scope'){ S.ui.scope=t.value; savePrefs(); renderGeral(); }
+  else if(t.id==='g-date'){ if(!t.value) return; S.ui.date=t.value; if(S.ui.end&&S.ui.end<t.value) S.ui.end=''; S.ui.month=t.value.slice(0,7); renderGeral(); }
+  else if(t.id==='g-end'){ S.ui.end=t.value&&t.value>=S.ui.date?t.value:''; renderGeral(); }
+  else if(t.id==='c-status'){ S.ui.cstatus=t.value; renderCategorias(); }
+  else if(t.id==='c-sort'){ S.ui.csort=t.value; savePrefs(); renderCategorias(); }
+});
+document.addEventListener('input',e=>{
+  const t=e.target;
+  if(t.id==='c-q'){ S.ui.q=t.value; renderCategorias(); }
+  else if(t.id==='e-q'){ S.ui.evq=t.value; renderEventos(); }
+  else if(t.dataset&&t.dataset.need!==undefined){
+    const key=t.dataset.need, n=Math.max(0,Math.floor(num(t.value))); S.ui.need[key]=n;
+    const a=S.ui.date, b=(S.ui.end&&S.ui.end>=a)?S.ui.end:a;
+    let sc=resolveScope(); if(!scopeItems(sc).length) sc='all';
+    const st=rangeStats(scopeItems(sc).filter(i=>groupKey(i)===key),a,b);
+    const out=t.closest('.need').querySelector('.need-res'); if(out) out.innerHTML=needResult(st.F,n);
+  }
+});
+window.addEventListener('hashchange',readHash);
+window.addEventListener('beforeunload',e=>{ const c=$('#view-cadastrar')._ctx; if(c&&c.dirty){ e.preventDefault(); e.returnValue=''; } });
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden) return;
+  const t=todayISO(); if(t!==S.day){ if(S.ui.date===S.day){S.ui.date=t;S.ui.month=t.slice(0,7);} S.day=t; renderActive(true); }
+});
 
-      const cardsHtml = items.map(item => `
-        <div class="bg-slate-900 border border-slate-800 hover:border-slate-700 rounded-xl p-4 flex flex-col justify-between transition">
-          <div>
-            <div class="flex items-start justify-between gap-2">
-              <span class="text-xs px-2 py-0.5 rounded font-mono font-medium ${item.isHeadset ? 'bg-cyan-500/20 text-cyan-300' : 'bg-slate-800 text-slate-300'}">
-                ${item.isHeadset ? '🥽 Headset' : '📦 Equipamento'}
-              </span>
-              <span class="text-xs px-2 py-0.5 rounded font-medium ${item.status === 'disponivel' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'}">
-                ${item.status}
-              </span>
-            </div>
-            <h4 class="text-base font-bold text-white mt-2">${item.name}</h4>
-            <p class="text-xs text-slate-400 font-medium">${item.model}</p>
-            <div class="mt-2 text-xs font-mono text-slate-500">S/N: ${item.serialNumber}</div>
-            <div class="flex flex-wrap gap-1 mt-3">
-              ${(item.tags || []).map(t => `<span class="text-[10px] px-2 py-0.5 bg-slate-800 text-slate-400 rounded-full">${t}</span>`).join('')}
-            </div>
-          </div>
-          <div class="mt-4 pt-3 border-t border-slate-800/80 flex items-center justify-between">
-            <button onclick="printItemQr('${item.id}')" class="text-xs text-cyan-400 hover:underline">Imprimir QR</button>
-            <button onclick="deleteItem('${item.id}')" class="text-xs text-rose-400 hover:underline">Excluir</button>
-          </div>
-        </div>
-      `).join('');
-
-      container.innerHTML = `
-        <div>
-          <div class="flex items-center justify-between mb-4">
-            <h3 class="text-lg font-bold text-white">Estoque Atual (${items.length} itens)</h3>
-            <button onclick="switchTab('register')" class="px-3 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold rounded-lg">
-              + Novo Item
-            </button>
-          </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            ${cardsHtml}
-          </div>
-        </div>
-      `;
-    }
-
-    function deleteItem(id) {
-      if (confirm('Tem certeza que deseja excluir este item?')) {
-        items = items.filter(i => i.id !== id);
-        persist();
-        if (db) {
-          db.collection('vr_fleet_management_items').doc(id).delete();
-        }
-      }
-    }
-
-    function printItemQr(id) {
-      const item = items.find(i => i.id === id);
-      if (!item) return;
-
-      const printArea = document.getElementById('print-area');
-      printArea.innerHTML = `
-        <div style="padding: 20px; font-family: sans-serif; text-align: center; border: 2px dashed #000; max-width: 320px; margin: 20px auto;">
-          <h2 style="margin: 0 0 5px 0; font-size: 16px;">${item.name}</h2>
-          <p style="margin: 0 0 10px 0; font-size: 12px; color: #555;">${item.model}</p>
-          <div id="qr-target" style="display: flex; justify-content: center; margin: 10px 0;"></div>
-          <p style="margin: 5px 0 0 0; font-family: monospace; font-size: 11px;">S/N: ${item.serialNumber}</p>
-          <p style="margin: 2px 0 0 0; font-size: 9px; color: #777;">VR Fleet Management System</p>
-        </div>
-      `;
-      
-      QRCode.toCanvas(JSON.stringify({ id: item.id, sn: item.serialNumber, name: item.name }), { width: 160 }, function (err, canvas) {
-        if (!err && canvas) {
-          document.getElementById('qr-target').appendChild(canvas);
-          window.print();
-        }
-      });
-    }
-
-    function renderEvents(container) {
-      container.innerHTML = `
-        <div class="space-y-6">
-          <div class="flex items-center justify-between">
-            <div>
-              <h3 class="text-lg font-bold text-white">Eventos & Agendamentos</h3>
-              <p class="text-xs text-slate-400">Ao alocar equipamentos a um evento, eles ficam indisponíveis na data escolhida.</p>
-            </div>
-            <button onclick="showCreateEventModal()" class="px-3 py-1.5 bg-cyan-500 text-slate-950 text-xs font-bold rounded-lg hover:bg-cyan-400">
-              + Novo Evento
-            </button>
-          </div>
-
-          ${events.length === 0 ? `
-            <div class="text-center py-12 bg-slate-900 border border-slate-800 rounded-2xl">
-              <p class="text-slate-400 text-sm">Nenhum evento registrado ainda.</p>
-            </div>
-          ` : `
-            <div class="space-y-3">
-              ${events.map(ev => `
-                <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div>
-                    <div class="flex items-center gap-2">
-                      <h4 class="text-base font-bold text-white">${ev.title}</h4>
-                      <span class="text-xs px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-medium">${ev.status}</span>
-                    </div>
-                    <p class="text-xs text-slate-400 mt-1">Local/Cliente: ${ev.clientOrLocation || 'Não especificado'}</p>
-                    <p class="text-xs font-mono text-cyan-400 mt-0.5">
-                      📅 ${new Date(ev.startDate).toLocaleDateString('pt-BR')} até ${new Date(ev.endDate).toLocaleDateString('pt-BR')}
-                    </p>
-                    <p class="text-xs text-slate-500 mt-1">Equipamentos alocados: ${(ev.allocatedItemIds || []).length} itens</p>
-                  </div>
-                  <div class="flex items-center gap-2">
-                    <button onclick="deleteEvent('${ev.id}')" class="px-3 py-1 bg-rose-500/20 text-rose-400 text-xs rounded hover:bg-rose-500/30">
-                      Excluir
-                    </button>
-                  </div>
-                </div>
-              `).join('')}
-            </div>
-          `}
-        </div>
-      `;
-    }
-
-    function deleteEvent(id) {
-      if (confirm('Excluir este evento? Os itens alocados serão liberados.')) {
-        events = events.filter(e => e.id !== id);
-        persist();
-        if (db) {
-          db.collection('vr_fleet_management_events').doc(id).delete();
-        }
-      }
-    }
-
-    function showCreateEventModal() {
-      const title = prompt('Nome do Evento:');
-      if (!title) return;
-      const client = prompt('Cliente ou Local:');
-      const startDate = prompt('Data de Início (AAAA-MM-DD):', new Date().toISOString().split('T')[0]);
-      if (!startDate) return;
-      const endDate = prompt('Data de Término (AAAA-MM-DD):', startDate);
-      
-      const newEv = {
-        id: 'ev_' + Date.now(),
-        title,
-        clientOrLocation: client || '',
-        startDate,
-        endDate: endDate || startDate,
-        status: 'agendado',
-        allocatedItemIds: [],
-        createdAt: new Date().toISOString()
-      };
-
-      events.push(newEv);
-      persist();
-      if (db) {
-        db.collection('vr_fleet_management_events').doc(newEv.id).set(newEv);
-      }
-      renderCurrentView();
-    }
-
-    // Initialize
-    initFirebaseIfPossible();
-    renderCurrentView();
-  </script>
+/* ---------- start ---------- */
+$$('#tabs button').forEach(b=>b.addEventListener('click',()=>setTab(b.dataset.tab)));
+updateSync();
+if(fbError) showBanner('<span>Não foi possível iniciar o Firebase: '+esc(fbError.message||fbError)+'</span>','err');
+setTab('geral');
+if(db){
+  readHash();
+  if(REQUIRE_LOGIN&&auth){
+    auth.onAuthStateChanged(u=>{
+      S.user=u;
+      if(u){ const box=$('#login-box'); if(box){ const mm=modalStack.find(x=>x.el.contains(box)); if(mm) mm.close(); } startData(); }
+      else { stopData(); showLogin(); }
+    });
+  } else startData();
+}
+})();
+</script>
 </body>
 </html>
