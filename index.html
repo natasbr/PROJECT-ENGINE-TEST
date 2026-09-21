@@ -21,6 +21,10 @@ html,body{height:100%}
 html.lock,html.lock body{overflow:hidden}
 body{margin:0;background:var(--bg);color:var(--g);font-family:var(--font);font-size:14px;line-height:1.45;-webkit-text-size-adjust:100%;color-scheme:dark}
 button,input,select,textarea{font:inherit;color:inherit}
+a{color:var(--blue)}
+a.btn{text-decoration:none;display:inline-flex;align-items:center;justify-content:center}
+.linkbtn{background:none;border:0;padding:0;min-height:0;color:var(--blue);cursor:pointer;font-weight:bold;text-decoration:underline dotted;text-align:left}
+.linkbtn:hover{color:#fff}
 b,strong{font-weight:bold}
 small{font-size:12px}
 .dim{color:var(--g-dim)}
@@ -56,7 +60,7 @@ small{font-size:12px}
 .view.active{display:block}
 @media(max-width:700px){
   .tabs{order:3;border-bottom:0;border-top:1px solid var(--g);padding-bottom:env(safe-area-inset-bottom);background:#000}
-  .tabs button{flex-direction:column;gap:2px;font-size:12px;padding:8px 2px;border-bottom:0;border-top:3px solid transparent}
+  .tabs button{flex-direction:column;gap:2px;font-size:11px;padding:8px 0;border-bottom:0;border-top:3px solid transparent;min-width:0}
   .tabs button.active{border-top-color:var(--g)}
   #main{padding:10px}
 }
@@ -88,7 +92,7 @@ small{font-size:12px}
 .btn.danger:hover:not(:disabled){background:var(--red);color:#000}
 .btn.ghost{background:transparent}
 .btn.full{width:100%}
-input[type=text],input[type=number],input[type=date],input[type=search],input[type=password],input[type=email],select,textarea{background:#000;color:var(--g);border:1px solid var(--g);padding:9px 10px;width:100%;min-height:40px;outline:none;border-radius:0;font-size:16px}
+input[type=text],input[type=tel],input[type=number],input[type=date],input[type=search],input[type=password],input[type=email],select,textarea{background:#000;color:var(--g);border:1px solid var(--g);padding:9px 10px;width:100%;min-height:40px;outline:none;border-radius:0;font-size:16px}
 textarea{min-height:76px;resize:vertical}
 input:focus,select:focus,textarea:focus{box-shadow:0 0 0 1px var(--g),0 0 10px rgba(0,255,0,.45)}
 input::placeholder,textarea::placeholder{color:#2c8a2c}
@@ -110,6 +114,9 @@ select option{background:#000;color:#0f0}
 .chip .n{color:var(--g-dim);margin-left:4px}
 .chip.on .n{color:#003300}
 .chip.x{border-color:var(--blue);color:var(--blue)}
+.chip.sp{border-color:var(--blue);color:var(--blue)}
+.chip.sp.on{background:var(--blue);color:#000}
+.chip.sp.on .n{color:#003355}
 
 /* ---------- selos e barras ---------- */
 .badge{display:inline-block;border:1px solid var(--g);padding:0 6px;font-size:12px;line-height:1.5;white-space:nowrap;border-radius:2px}
@@ -117,6 +124,8 @@ select option{background:#000;color:#0f0}
 .st-manutencao{border-color:var(--amber);color:var(--amber)}
 .st-danificado,.st-perdido,.st-cancelado{border-color:var(--red);color:var(--red)}
 .st-baixado,.ph-passado{border-color:var(--gray);color:var(--gray)}
+.st-alugado{border-color:var(--blue);color:var(--blue)}
+.st-vendido{border-color:var(--amber);color:var(--amber)}
 .st-planejado,.ph-proximo{border-color:var(--blue);color:var(--blue)}
 .st-confirmado{border-color:var(--g);color:var(--g)}
 .tag{display:inline-block;border:1px solid var(--blue);color:var(--blue);padding:0 6px;font-size:12px;background:rgba(0,102,204,.12);border-radius:2px}
@@ -184,6 +193,7 @@ select option{background:#000;color:#0f0}
 .thumb{width:52px;height:52px;border:1px solid var(--g-line);background:#001100;display:flex;align-items:center;justify-content:center;color:#1f6f1f;overflow:hidden;font-size:12px;flex:none}
 .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .imain{min-width:0;display:flex;flex-direction:column;gap:2px}
+.thumb.ini{font-weight:bold;font-size:16px;color:var(--g);background:var(--bg2)}
 .tagline{display:flex;gap:4px;flex-wrap:wrap;margin-top:2px}
 
 /* ---------- janelas ---------- */
@@ -292,12 +302,14 @@ input[type=number].qty,.qty{width:70px;min-height:32px;padding:2px 6px;font-size
     <button data-tab="cadastrar" role="tab"><span class="gl">+</span><span>Cadastrar</span></button>
     <button data-tab="categorias" role="tab"><span class="gl">≡</span><span>Categorias</span></button>
     <button data-tab="eventos" role="tab"><span class="gl">▦</span><span>Eventos</span></button>
+    <button data-tab="contatos" role="tab"><span class="gl">@</span><span>Contatos</span></button>
   </nav>
   <main id="main">
     <section id="view-geral" class="view"></section>
     <section id="view-cadastrar" class="view"></section>
     <section id="view-categorias" class="view"></section>
     <section id="view-eventos" class="view"></section>
+    <section id="view-contatos" class="view"></section>
   </main>
 </div>
 <div id="modal-root"></div>
@@ -326,11 +338,11 @@ const firebaseConfig = {
 };
 
 /* Coleções exclusivas deste app (não cruzam com a galeria online) */
-const COL = { items:'vrm_items', events:'vrm_events', photos:'vrm_photos', meta:'vrm_meta' };
+const COL = { items:'vrm_items', events:'vrm_events', photos:'vrm_photos', meta:'vrm_meta', contacts:'vrm_contacts' };
 
 /* Login opcional. false = abre direto (mais simples).
    true  = exige e-mail/senha do Firebase Auth (mais seguro; veja o guia). */
-const REQUIRE_LOGIN = false;
+const REQUIRE_LOGIN = true;
 
 /* ---------- utilitários ---------- */
 const $ = (s,r=document)=>r.querySelector(s);
@@ -376,9 +388,8 @@ const ITEM_FIELDS = [
   {sec:'Identificação', key:'model',     label:'Modelo / tipo', type:'text', suggest:true, ph:'Ex.: Meta Quest 3 128 GB', hint:'Itens com o mesmo modelo são somados na tela Geral'},
   {sec:'Identificação', key:'brand',     label:'Marca', type:'text', suggest:true, ph:'Ex.: Meta, BOBOVR'},
   {sec:'Identificação', key:'serial',    label:'Nº de série', type:'text'},
-  {sec:'Identificação', key:'assetTag',  label:'Patrimônio / ID interno', type:'text'},
   {sec:'Estoque', key:'mode',      label:'Controle', type:'select', options:[['unit','Unidade única'],['qty','Por quantidade (lote)']], reflow:true, hint:'Use "lote" para itens sem série individual (cabos, canetas…)'},
-  {sec:'Estoque', key:'qty',       label:'Quantidade total', type:'number', min:1, step:'1', showIf:d=>d.mode==='qty'},
+  {sec:'Estoque', key:'qty',       label:'Quantidade total', type:'number', min:1, step:'1', showIf:d=>d.mode==='qty', hint:'Vendas são descontadas automaticamente'},
   {sec:'Estoque', key:'unavailQty',label:'Quantidade indisponível', type:'number', min:0, step:'1', showIf:d=>d.mode==='qty', hint:'Quebradas ou em manutenção'},
   {sec:'Estoque', key:'status',    label:'Situação', type:'select', options:STATUS, reflow:true},
   {sec:'Estoque', key:'backOn',    label:'Volta a ficar disponível em', type:'date', showIf:d=>d.status==='manutencao'||d.status==='danificado', hint:'Opcional. Libera o item nas datas a partir deste dia'},
@@ -391,16 +402,41 @@ const ITEM_FIELDS = [
 ];
 /* Ordem das seções do formulário. "@" = blocos especiais. */
 const FORM_LAYOUT = ['Identificação','@tags','Estoque','Compra','@photos','@maintenance','Notas','@custom','@qr'];
-const DEFAULT_ITEM = ()=>({name:'',model:'',brand:'',serial:'',assetTag:'',mode:'unit',qty:1,unavailQty:0,status:'disponivel',backOn:'',condition:'bom',location:'',acquiredOn:'',value:'',supplier:'',notes:'',tags:[],custom:[],maintenance:[],qrEnabled:true});
+const DEFAULT_ITEM = ()=>({name:'',model:'',brand:'',serial:'',mode:'unit',qty:1,unavailQty:0,status:'disponivel',backOn:'',condition:'bom',location:'',acquiredOn:'',value:'',supplier:'',notes:'',tags:[],custom:[],maintenance:[],holdings:[],photosAt:0,qrEnabled:true});
 const PERSIST_KEYS = ITEM_FIELDS.map(f=>f.key).concat(['tags','custom','maintenance','qrEnabled']);
+
+/* =====================================================================
+   CAMPOS DO CONTATO — mesma ideia: uma linha nova aqui aparece sozinha
+   no formulário, na ficha e é salva.
+   ===================================================================== */
+const ROLE_SUGGEST = ['Promotor','Produtor','Produtor técnico','Técnico / operador','Cliente','Locatário','Comprador','Fornecedor','Parceiro'];
+const CONTACT_FIELDS = [
+  {sec:'Identificação', key:'name',     label:'Nome', type:'text', req:true, ph:'Nome da pessoa'},
+  {sec:'Identificação', key:'company',  label:'Empresa / produtora', type:'text', suggest:true},
+  {sec:'Identificação', key:'cpf',      label:'CPF', type:'text', ph:'000.000.000-00', numeric:true},
+  {sec:'Identificação', key:'cnpj',     label:'CNPJ', type:'text', ph:'00.000.000/0000-00', numeric:true},
+  {sec:'Contato',       key:'phone',    label:'Telefone / WhatsApp', type:'tel', ph:'(11) 90000-0000'},
+  {sec:'Contato',       key:'phone2',   label:'Telefone 2', type:'tel'},
+  {sec:'Contato',       key:'email',    label:'E-mail', type:'email'},
+  {sec:'Endereço',      key:'cep',      label:'CEP', type:'text', numeric:true},
+  {sec:'Endereço',      key:'street',   label:'Rua / avenida', type:'text'},
+  {sec:'Endereço',      key:'number',   label:'Número', type:'text'},
+  {sec:'Endereço',      key:'complement',label:'Complemento', type:'text'},
+  {sec:'Endereço',      key:'district', label:'Bairro', type:'text'},
+  {sec:'Endereço',      key:'city',     label:'Cidade', type:'text', suggest:true},
+  {sec:'Endereço',      key:'state',    label:'UF', type:'text', ph:'SP'},
+  {sec:'Notas',         key:'notes',    label:'Observações', type:'textarea'}
+];
+const DEFAULT_CONTACT = ()=>Object.assign({roles:[]},Object.fromEntries(CONTACT_FIELDS.map(f=>[f.key,''])));
+const contactAddress = c=>[[c.street,c.number].filter(Boolean).join(', '),c.complement,c.district,[c.city,c.state].filter(Boolean).join(' - '),c.cep].filter(Boolean).join(' · ');
 
 /* ---------- estado ---------- */
 const S = {
-  items:[], events:[], itemsById:new Map(), meta:{},
-  loaded:{items:false,events:false},
+  items:[], all:[], sold:[], events:[], contacts:[], contactsById:new Map(), itemsById:new Map(), meta:{},
+  loaded:{items:false,events:false,contacts:false}, contactsError:null,
   tab:'geral', createDraft:null, photoCache:new Map(),
   sync:{fromCache:true,pending:false,online:navigator.onLine},
-  ui:{scope:'auto', date:todayISO(), end:'', month:todayISO().slice(0,7), need:{}, q:'', cstatus:'all', csort:'name', ctag:'all', cview:'group', evFilter:'ativos', evq:''},
+  ui:{scope:'auto', date:todayISO(), end:'', month:todayISO().slice(0,7), need:{}, q:'', cstatus:'all', csort:'name', ctag:'all', cview:'group', evFilter:'ativos', evq:'', cq:'', crole:'all'},
   user:null, renderPending:false, pendingItem:null
 };
 (function loadPrefs(){try{const p=JSON.parse(localStorage.getItem('vrm_prefs'))||{};['scope','cview','evFilter','csort'].forEach(k=>{if(p[k])S.ui[k]=p[k];});}catch(e){}})();
@@ -416,17 +452,33 @@ try{
 }catch(e){ fbError=e; console.error('Firebase:',e); }
 
 /* ---------- regras de disponibilidade ---------- */
-const totalQty = it=>it.mode==='qty'?Math.max(0,Math.floor(num(it.qty))):1;
+const baseQty = it=>it.mode==='qty'?Math.max(0,Math.floor(num(it.qty))):1;
+const holdQty = h=>Math.max(1,Math.floor(num(h.qty))||1);
+const soldQty = it=>(it.holdings||[]).reduce((s,h)=>h.kind==='vendido'?s+holdQty(h):s,0);
+/* total = o que ainda é seu (o que foi vendido sai do estoque) */
+const totalQty = it=>Math.max(0,baseQty(it)-soldQty(it));
 const downQty = it=>it.mode==='qty'?Math.min(totalQty(it),Math.max(0,Math.floor(num(it.unavailQty)))):0;
 const groupKey = it=>((it.model||'').trim()||(it.name||'').trim()||'Sem nome');
-
-/* quantas unidades do item podem ser usadas no dia d (ignorando eventos) */
-function usableQty(it,d){
+const activeRentals = it=>(it.holdings||[]).filter(h=>h.kind==='alugado'&&!h.returnedOn);
+const isOverdue = h=>h.kind==='alugado'&&!h.returnedOn&&!!h.until&&h.until<todayISO();
+/* unidades alugadas fora no dia d. Sem data de devolução, ou atrasado: continua fora até dar baixa. */
+function rentedOn(it,d){
+  let s=0; const t=todayISO();
+  for(const h of activeRentals(it)){
+    const end=(h.until&&h.until>=t)?h.until:null;
+    if((!h.from||d>=h.from)&&(!end||d<=end)) s+=holdQty(h);
+  }
+  return s;
+}
+/* unidades utilizáveis no dia d, sem contar aluguéis nem eventos */
+function usableBase(it,d){
   const tot=totalQty(it);
   if(it.status==='disponivel') return tot-downQty(it);
   if((it.status==='manutencao'||it.status==='danificado') && it.backOn && d>=it.backOn) return tot-downQty(it);
   return 0;
 }
+/* unidades que podem ser usadas no dia d (ignorando eventos) */
+const usableQty = (it,d)=>Math.max(0,usableBase(it,d)-rentedOn(it,d));
 /* quantas unidades do item estão reservadas em eventos no dia d.
    ov = {exclude:eventId, extra:Map, range:[a,b]} simula um rascunho de evento */
 function reservedFor(itemId,d,ov){
@@ -440,21 +492,21 @@ function reservedFor(itemId,d,ov){
   return sum;
 }
 function dayStats(items,d,ov){
-  let T=0,U=0,R=0,F=0;
+  let T=0,U=0,L=0,R=0,F=0;
   for(const it of items){
-    const tot=totalQty(it), us=usableQty(it,d), used=Math.min(reservedFor(it.id,d,ov),us);
-    T+=tot; U+=tot-us; R+=used; F+=us-used;
+    const tot=totalQty(it), b=usableBase(it,d), rent=Math.min(rentedOn(it,d),b), us=b-rent, used=Math.min(reservedFor(it.id,d,ov),us);
+    T+=tot; U+=tot-b; L+=rent; R+=used; F+=us-used;
   }
-  return {T,U,R,F};
+  return {T,U,L,R,F};
 }
 /* pior dia do intervalo (o que tem menos itens livres) */
 function rangeStats(items,a,b,ov){
   let worst=null;
   for(const d of eachDay(a,b)){const s=dayStats(items,d,ov); if(!worst||s.F<worst.F) worst=s;}
-  return worst||{T:0,U:0,R:0,F:0};
+  return worst||{T:0,U:0,L:0,R:0,F:0};
 }
 function eventConflicts(ev){
-  const out=[]; if(ev.status==='cancelado') return out;
+  const out=[]; if(ev.status==='cancelado'||ev.end<todayISO()) return out;
   for(const [itemId] of ev._m){
     const it=S.itemsById.get(itemId);
     if(!it){out.push({itemId,missing:true,days:[]});continue;}
@@ -518,15 +570,24 @@ function normItem(id,d){
   if(!Array.isArray(it.tags)) it.tags=[]; if(!Array.isArray(it.custom)) it.custom=[]; if(!Array.isArray(it.maintenance)) it.maintenance=[];
   if(!STATUS.some(s=>s[0]===it.status)) it.status='disponivel';
   if(it.mode!=='qty') it.mode='unit';
+  it.holdings=(Array.isArray(it.holdings)?it.holdings:[]).filter(h=>h&&(h.kind==='alugado'||h.kind==='vendido')).map(h=>Object.assign({id:'',contactId:'',qty:1,from:'',until:'',date:'',price:'',note:'',returnedOn:''},h));
   return it;
 }
 function normEvent(id,d){
-  const ev=Object.assign({name:'',client:'',place:'',start:todayISO(),end:todayISO(),status:'planejado',notes:'',alloc:[]},d||{}); ev.id=id;
+  const ev=Object.assign({name:'',client:'',place:'',start:todayISO(),end:todayISO(),status:'planejado',notes:'',alloc:[],contacts:[]},d||{}); ev.id=id;
   if(!Array.isArray(ev.alloc)) ev.alloc=[];
+  if(!Array.isArray(ev.contacts)) ev.contacts=[];
   if(!ev.end||ev.end<ev.start) ev.end=ev.start;
   ev._m=new Map(); for(const a of ev.alloc) ev._m.set(a.itemId,(ev._m.get(a.itemId)||0)+num(a.qty));
   return ev;
 }
+
+function normContact(id,d){
+  const c=Object.assign(DEFAULT_CONTACT(),d||{}); c.id=id;
+  if(!Array.isArray(c.roles)) c.roles=[];
+  return c;
+}
+const contactName = id=>{const c=S.contactsById.get(id); return c?c.name:'(contato removido)';};
 
 /* ---------- escrita ---------- */
 async function runBatch(build){
@@ -711,7 +772,6 @@ function labelsHTML(items,size){
     '<div class="label"><div class="lq">'+qrSvg(itemUrl(it.id))+'</div><div class="lt"><b>'+esc(it.name)+'</b>'+
     (it.model&&it.model!==it.name?'<span>'+esc(it.model)+'</span>':'')+
     (it.serial?'<span>S/N '+esc(it.serial)+'</span>':'')+
-    (it.assetTag?'<span>ID '+esc(it.assetTag)+'</span>':'')+
     (it.mode==='qty'?'<span>Lote: '+totalQty(it)+' un.</span>':'')+
     '</div></div>').join('')+'</div>';
 }
@@ -731,20 +791,20 @@ window.addEventListener('afterprint',()=>{$('#print-portal').innerHTML='';});
 /* ---------- regras do Firebase / configurações ---------- */
 function rulesText(){
   const cond=REQUIRE_LOGIN?"request.auth != null":"true";
-  return "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    // ...mantenha aqui as regras que você já usa (galeria etc.)\n\n    // VR Estoque\n    match /vrm_items/{id}  { allow read, write: if "+cond+"; }\n    match /vrm_events/{id} { allow read, write: if "+cond+"; }\n    match /vrm_photos/{id} { allow read, write: if "+cond+"; }\n    match /vrm_meta/{id}   { allow read, write: if "+cond+"; }\n  }\n}";
+  return "rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n\n    // ...mantenha aqui as regras que você já usa (galeria etc.)\n\n    // VR Estoque\n    match /vrm_items/{id}  { allow read, write: if "+cond+"; }\n    match /vrm_events/{id} { allow read, write: if "+cond+"; }\n    match /vrm_photos/{id} { allow read, write: if "+cond+"; }\n    match /vrm_meta/{id}   { allow read, write: if "+cond+"; }\n    match /vrm_contacts/{id} { allow read, write: if "+cond+"; }\n  }\n}";
 }
 function showRulesHelp(){
   if($('#rules-modal')) return;
   const m=openModal({title:'Liberar o VR Estoque no Firebase',cls:'',foot:true,body:
    '<div id="rules-modal"><p style="margin-top:0">O Firebase bloqueou a leitura/gravação. As regras do seu projeto ainda não permitem as coleções deste app.</p>'+
-   '<ol style="padding-left:18px"><li>Abra o <b>Console do Firebase</b> → projeto <b>project-engine-2f962</b>.</li><li>Vá em <b>Firestore Database → Regras</b>.</li><li>Adicione as 4 linhas <code>vrm_*</code> abaixo <b>sem apagar</b> as regras da galeria e clique em <b>Publicar</b>.</li></ol>'+
+   '<ol style="padding-left:18px"><li>Abra o <b>Console do Firebase</b> → projeto <b>project-engine-2f962</b>.</li><li>Vá em <b>Firestore Database → Regras</b>.</li><li>Adicione as 5 linhas <code>vrm_*</code> abaixo <b>sem apagar</b> as regras da galeria e clique em <b>Publicar</b>.</li></ol>'+
    '<div class="codebox" id="rules-code"></div><p class="dim" style="font-size:12px">Essas coleções são separadas de <code>gallery_objects</code>: a galeria do Dream Engine continua como está.</p></div>'});
   $('#rules-code',m.el).textContent=rulesText();
   m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn pri" data-x="copy">Copiar regras</button>';
   m.el.addEventListener('click',e=>{if(e.target.closest('[data-x="copy"]')) copyText(rulesText(),'Regras copiadas');});
 }
 function exportBackup(){
-  const data={app:'vr-estoque',exportedAt:new Date().toISOString(),items:S.items.map(({id,...r})=>Object.assign({id},r)),events:S.events.map(e=>{const {_m,...r}=e;return r;})};
+  const data={app:'vr-estoque',exportedAt:new Date().toISOString(),items:S.all.map(({id,...r})=>Object.assign({id},r)),events:S.events.map(e=>{const {_m,...r}=e;return r;}),contacts:S.contacts.map(({id,...r})=>Object.assign({id},r))};
   const b=new Blob([JSON.stringify(data,null,1)],{type:'application/json'}), a=document.createElement('a');
   a.href=URL.createObjectURL(b); a.download='vr-estoque-backup-'+todayISO()+'.json'; document.body.appendChild(a); a.click();
   setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},500);
@@ -753,7 +813,7 @@ function openSettings(){
   const m=openModal({title:'Configurações',cls:'',foot:true,body:
    '<div class="stack"><div class="field"><label for="set-url">URL do app (usada nos QR Codes)</label><input type="text" id="set-url" placeholder="'+esc(baseUrl())+'"><span class="hint">Deixe em branco para usar o endereço atual. Preencha se estiver testando fora do GitHub Pages.</span></div>'+
    '<div class="row"><button class="btn sm" data-x="backup">Baixar backup (JSON)</button><button class="btn sm" data-x="rules">Ver regras do Firebase</button>'+(REQUIRE_LOGIN&&auth?'<button class="btn sm danger" data-x="logout">Sair</button>':'')+'</div>'+
-   '<p class="dim" style="font-size:12px;margin:0">Dados guardados nas coleções <b>vrm_items</b>, <b>vrm_events</b>, <b>vrm_photos</b> e <b>vrm_meta</b> do projeto '+esc(firebaseConfig.projectId)+'. O backup não inclui as fotos.</p></div>'});
+   '<p class="dim" style="font-size:12px;margin:0">Dados guardados nas coleções <b>vrm_items</b>, <b>vrm_events</b>, <b>vrm_photos</b>, <b>vrm_contacts</b> e <b>vrm_meta</b> do projeto '+esc(firebaseConfig.projectId)+'. O backup não inclui as fotos.</p></div>'});
   $('#set-url',m.el).value=S.meta.baseUrl||'';
   m.foot.innerHTML='<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-x="save">Salvar</button>';
   m.el.addEventListener('click',async e=>{
@@ -791,7 +851,18 @@ function asciiBar(F,R,U,T,w){
   }
   return '<span class="bf">'+'█'.repeat(f)+'</span><span class="br">'+'▓'.repeat(r)+'</span><span class="bu">'+'▒'.repeat(u)+'</span>';
 }
-const LEGEND='<div class="legend"><span><span class="bf">█</span> livre</span><span><span class="br">▓</span> em eventos</span><span><span class="bu">▒</span> fora de uso</span></div>';
+const LEGEND='<div class="legend"><span><span class="bf">█</span> livre</span><span><span class="br">▓</span> em eventos</span><span><span class="bu">▒</span> fora de uso / alugado</span></div>';
+/* registros de aluguel/venda de todos os itens (inclusive os já vendidos) */
+function holdRecords(kind){
+  const out=[];
+  for(const it of S.all) for(const h of it.holdings||[]){
+    if(kind==='alugado'){ if(h.kind==='alugado'&&!h.returnedOn) out.push({it,h}); }
+    else if(h.kind==='vendido') out.push({it,h});
+  }
+  return out;
+}
+const rentLine = h=>(h.from?'desde '+fmtDate(h.from):'')+(h.until?(h.from?' · ':'')+'devolução '+fmtDate(h.until):(h.from?' · sem prazo':'sem prazo'));
+const contactBtn = id=>'<button type="button" class="linkbtn" data-act="open-contact" data-id="'+esc(id)+'">'+esc(contactName(id))+'</button>';
 function condHTML(c){
   const n=COND_LEVEL[c]||0; if(!n) return '';
   return '<span class="cond c'+n+'" title="Conservação: '+esc(label(CONDITION,c))+'"><span class="m">'+'■'.repeat(n)+'□'.repeat(5-n)+'</span> '+esc(label(CONDITION,c))+'</span>';
@@ -828,6 +899,8 @@ function renderGeral(){
   let alerts='';
   const conf=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').map(ev=>({ev,c:eventConflicts(ev)})).filter(x=>x.c.length);
   conf.slice(0,4).forEach(x=>{alerts+='<button class="alert red" data-act="open-event" data-id="'+esc(x.ev.id)+'">⚠ Conflito no evento “'+esc(x.ev.name)+'”: '+x.c.length+' item(ns) indisponível(is) ou reservado(s) em duplicidade</button>';});
+  const late=holdRecords('alugado').filter(x=>isOverdue(x.h));
+  if(late.length) alerts+='<button class="alert red" data-act="goto-rent">⚠ '+late.length+' devolução(ões) atrasada(s): '+esc(Array.from(new Set(late.map(x=>contactName(x.h.contactId)))).slice(0,3).join(', '))+'</button>';
   const off=S.items.filter(it=>it.status==='manutencao'||it.status==='danificado').length;
   if(off) alerts+='<button class="alert" data-act="goto-off">'+off+' item(ns) fora de uso (manutenção ou danificado) — ver lista</button>';
 
@@ -836,8 +909,8 @@ function renderGeral(){
   const grpHTML=groups.map(({g,s})=>{
     const need=num(S.ui.need[g.key]);
     return '<div class="grp" data-group="'+esc(g.key)+'"><div class="grp-top"><b>'+esc(g.key)+'</b><span><b class="'+(s.F===0?'bad':'good')+'">'+s.F+'</b>/'+s.T+' livres</span></div>'+
-      '<div class="bar" aria-label="'+s.F+' livres de '+s.T+'">'+asciiBar(s.F,s.R,s.U,s.T,20)+'</div>'+
-      '<div class="grp-sub"><span>em eventos '+s.R+' · fora de uso '+s.U+'</span><label class="need">Preciso <input type="number" min="0" step="1" inputmode="numeric" data-need="'+esc(g.key)+'" value="'+(need||'')+'" aria-label="Quantidade necessária de '+esc(g.key)+'"><span class="need-res">'+needResult(s.F,need)+'</span></label></div></div>';
+      '<div class="bar" aria-label="'+s.F+' livres de '+s.T+'">'+asciiBar(s.F,s.R,s.U+s.L,s.T,20)+'</div>'+
+      '<div class="grp-sub"><span>em eventos '+s.R+' · fora de uso '+s.U+(s.L?' · alugados '+s.L:'')+'</span><label class="need">Preciso <input type="number" min="0" step="1" inputmode="numeric" data-need="'+esc(g.key)+'" value="'+(need||'')+'" aria-label="Quantidade necessária de '+esc(g.key)+'"><span class="need-res">'+needResult(s.F,need)+'</span></label></div></div>';
   }).join('');
 
   /* calendário */
@@ -850,6 +923,14 @@ function renderGeral(){
     const cls=!s.T?'f-na':s.F===0?'f-zero':s.F/s.T<=0.25?'f-low':'f-ok';
     cells+='<button class="cday'+(d.getMonth()!==cm-1?' out':'')+(ds===t?' today':'')+(ds>=a&&ds<=b?' inr':'')+(ds===a?' sel':'')+'" data-act="pick-day" data-date="'+ds+'" aria-label="'+fmtDate(ds)+': '+s.F+' livres, '+n+' evento(s)"><span class="dn">'+d.getDate()+'</span><span class="fv '+cls+'">'+(s.T?s.F:'·')+'</span><span class="ev">'+(n?'▪'.repeat(Math.min(n,4))+(n>4?'+':''):'')+'</span></button>';
   }
+
+  /* com terceiros (alugados agora) */
+  const rentBy=new Map(); holdRecords('alugado').forEach(x=>{const k=x.h.contactId||'?'; if(!rentBy.has(k)) rentBy.set(k,[]); rentBy.get(k).push(x);});
+  const rentCard=rentBy.size?'<div class="card"><div class="h2"><span class="t">Com terceiros</span><small class="dim">alugados agora</small></div>'+Array.from(rentBy,([cid,list])=>{
+    const gm=new Map(); list.forEach(({it,h})=>gm.set(groupKey(it),(gm.get(groupKey(it))||0)+holdQty(h)));
+    const late=list.some(x=>isOverdue(x.h)), untils=list.map(x=>x.h.until).filter(Boolean).sort();
+    return '<button class="erow" style="grid-template-columns:1fr auto" data-act="open-contact" data-id="'+esc(cid)+'"><span class="emain"><b>'+esc(contactName(cid))+'</b><small>'+esc(Array.from(gm,([k,n])=>n+'× '+k).join(' · '))+'</small></span><span class="emeta">'+(late?'<span class="bad">⚠ atrasado</span>':'')+'<span class="dim">'+(untils.length?'até '+fmtShort(untils[untils.length-1]):'sem prazo')+'</span></span></button>';
+  }).join('')+'</div>':'';
 
   /* próximos eventos */
   const up=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').sort((x,y)=>x.start.localeCompare(y.start)||x.name.localeCompare(y.name)).slice(0,6);
@@ -864,11 +945,12 @@ function renderGeral(){
       '<div class="field"><label for="g-end">Até (opcional)</label><input type="date" id="g-end" value="'+(S.ui.end&&S.ui.end>=a?S.ui.end:'')+'" min="'+a+'"></div></div>'+
       '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="g-today">Hoje</button>'+(a!==b?'<button class="btn sm ghost" data-act="g-clear-end">Só um dia</button>':'')+'<button class="btn sm blue" data-act="new-event" data-date="'+a+'">+ Evento nesta data</button></div>'+
       '<div style="margin-top:14px"><div class="hero-num">'+st.F+' <small>livres de '+st.T+' · '+esc(dateLbl)+'</small></div>'+
-      '<div class="hero-bar bar" aria-hidden="true">'+asciiBar(st.F,st.R,st.U,st.T,24)+'</div>'+LEGEND+
-      '<div class="trio"><div><b>'+st.R+'</b><span>em eventos</span></div><div><b>'+st.U+'</b><span>fora de uso</span></div></div>'+
+      '<div class="hero-bar bar" aria-hidden="true">'+asciiBar(st.F,st.R,st.U+st.L,st.T,24)+'</div>'+LEGEND+
+      '<div class="trio"><div><b>'+st.R+'</b><span>em eventos</span></div><div><b>'+st.L+'</b><span>alugados</span></div><div><b>'+st.U+'</b><span>fora de uso</span></div></div>'+
       (a!==b?'<div class="dim" style="font-size:12px;margin-top:6px">Período: considera o dia com menos itens livres.</div>':'')+'</div>'+
       (evs.length?'<div class="h3">Eventos '+(a===b?'nesta data':'neste período')+'</div><div class="chips">'+evs.map(ev=>'<button class="chip x" data-act="open-event" data-id="'+esc(ev.id)+'">'+esc(ev.name)+' <span class="n">'+fmtShort(ev.start)+(ev.end!==ev.start?'–'+fmtShort(ev.end):'')+'</span></button>').join('')+'</div>':'')+
     '</div>'+
+    rentCard+
     '<div class="card"><div class="h2"><span class="t">Por modelo</span><small class="dim">Digite “Preciso” para conferir se cabe</small></div>'+(grpHTML||'<div class="empty">Nada nesta categoria.</div>')+'</div>'+
   '</div><div class="stack">'+
     '<div class="card"><div class="h2"><span class="t">Calendário</span><small class="dim">livres por dia · ▪ eventos</small></div>'+
@@ -883,14 +965,14 @@ function evRowHTML(ev){
   let when=''; if(ph==='andamento') when='em andamento'; else if(ph==='proximo'){const d=diffDays(t,ev.start); when=d===1?'amanhã':'em '+d+' dias';}
   const [y]=ev.start.split('-');
   return '<button class="erow" data-act="open-event" data-id="'+esc(ev.id)+'"><span class="edate"><b>'+fmtShort(ev.start).replace(' ','<br>')+'</b><small>'+(ev.end!==ev.start?'até '+fmtShort(ev.end):y)+'</small></span>'+
-    '<span class="emain"><b>'+esc(ev.name||'(sem nome)')+'</b><small>'+esc([ev.client,ev.place].filter(Boolean).join(' · ')||'—')+'</small><small>'+(evCount(ev)?esc(evSummary(ev)):'sem equipamentos')+'</small></span>'+
+    '<span class="emain"><b>'+esc(ev.name||'(sem nome)')+'</b><small>'+esc([ev.client,ev.place].filter(Boolean).join(' · ')||'—')+'</small><small>'+(evCount(ev)?esc(evSummary(ev)):'sem equipamentos')+'</small>'+((ev.contacts||[]).length?'<small>▸ '+esc(ev.contacts.slice(0,3).map(c=>contactName(c.contactId)).join(', ')+(ev.contacts.length>3?' +'+(ev.contacts.length-3):''))+'</small>':'')+'</span>'+
     '<span class="emeta"><span class="badge st-'+ev.status+'">'+esc(label(EV_STATUS,ev.status))+'</span>'+(when?'<span class="dim">'+when+'</span>':'')+(conf?'<span class="bad">⚠ conflito</span>':'')+'</span></button>';
 }
 
 /* ---------- CATEGORIAS ---------- */
 let catsShell=false;
 function itemSearchText(it){
-  return norm([it.name,it.model,it.brand,it.serial,it.assetTag,it.location,it.supplier,it.notes,(it.tags||[]).join(' '),(it.custom||[]).map(c=>c.k+' '+c.v).join(' ')].join(' '));
+  return norm([it.name,it.model,it.brand,it.serial,it.location,it.supplier,it.notes,(it.tags||[]).join(' '),(it.custom||[]).map(c=>c.k+' '+c.v).join(' '),(it.holdings||[]).map(h=>contactName(h.contactId)).join(' ')].join(' '));
 }
 function filteredItems(){
   const u=S.ui, q=norm(u.q.trim());
@@ -898,7 +980,8 @@ function filteredItems(){
     if(q && !q.split(/\s+/).every(w=>itemSearchText(it).includes(w))) return false;
     if(u.cstatus==='fora'){ if(it.status==='disponivel') return false; }
     else if(u.cstatus!=='all' && it.status!==u.cstatus) return false;
-    if(u.ctag==='__none'){ if((it.tags||[]).length) return false; }
+    if(u.ctag==='__rent'){ if(!activeRentals(it).length) return false; }
+    else if(u.ctag==='__none'){ if((it.tags||[]).length) return false; }
     else if(u.ctag!=='all' && !hasTag(it,u.ctag)) return false;
     return true;
   });
@@ -912,10 +995,10 @@ function filteredItems(){
   return list.sort(cmp);
 }
 function itemRowHTML(it){
-  const s=dayStats([it],todayISO());
+  const s=dayStats([it],todayISO()), rents=activeRentals(it);
   let av;
-  if(it.mode==='qty') av='<span class="'+(s.F===0?'bad':'good')+'">'+s.F+'/'+s.T+' livres</span>';
-  else av=s.U?'<span class="warn">indisponível</span>':s.R?'<span class="dim">em evento hoje</span>':'<span class="good">livre</span>';
+  if(it.mode==='qty') av='<span class="'+(s.F===0?'bad':'good')+'">'+s.F+'/'+s.T+' livres</span>'+(s.L?'<span class="warn">'+s.L+' alugada(s)</span>':'');
+  else av=s.L?'<span class="warn">alugado: '+esc(contactName(rents[0].contactId))+'</span>':s.U?'<span class="warn">indisponível</span>':s.R?'<span class="dim">em evento hoje</span>':'<span class="good">livre</span>';
   return '<button class="irow" data-act="open-item" data-id="'+esc(it.id)+'"><span class="thumb">'+(it.thumb?'<img alt="" src="'+esc(it.thumb)+'">':'▢')+'</span>'+
     '<span class="imain"><b>'+esc(it.name)+'</b><small>'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||(it.mode==='qty'?'Lote de '+totalQty(it):'—'))+'</small>'+
     ((it.tags||[]).length?'<span class="tagline">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</span>':'')+'</span>'+
@@ -935,13 +1018,17 @@ function renderCategorias(){
   ensureCatsShell();
   if(!ready()){ $('#c-list').innerHTML='<div class="empty"><b>Carregando…</b></div>'; return; }
   const tags=tagIndex(), noTag=S.items.filter(it=>!(it.tags||[]).length);
-  if(S.ui.ctag!=='all' && S.ui.ctag!=='__none' && !tags.some(t=>t.name.toLowerCase()===S.ui.ctag.toLowerCase())) S.ui.ctag='all';
+  if(!['all','__none','__rent','__sold'].includes(S.ui.ctag) && !tags.some(t=>t.name.toLowerCase()===S.ui.ctag.toLowerCase())) S.ui.ctag='all';
   $('#c-chips').innerHTML='<button class="chip'+(S.ui.ctag==='all'?' on':'')+'" data-act="c-tag" data-tag="all">Todas<span class="n">'+S.items.length+'</span></button>'+
     tags.map(t=>'<button class="chip'+(S.ui.ctag.toLowerCase()===t.name.toLowerCase()?' on':'')+'" data-act="c-tag" data-tag="'+esc(t.name)+'">'+esc(t.name)+'<span class="n">'+t.items+'</span></button>').join('')+
-    (noTag.length?'<button class="chip'+(S.ui.ctag==='__none'?' on':'')+'" data-act="c-tag" data-tag="__none">Sem categoria<span class="n">'+noTag.length+'</span></button>':'');
+    (noTag.length?'<button class="chip'+(S.ui.ctag==='__none'?' on':'')+'" data-act="c-tag" data-tag="__none">Sem categoria<span class="n">'+noTag.length+'</span></button>':'')+
+    '<button class="chip sp'+(S.ui.ctag==='__rent'?' on':'')+'" data-act="c-tag" data-tag="__rent">Alugados<span class="n">'+holdRecords('alugado').length+'</span></button>'+
+    '<button class="chip sp'+(S.ui.ctag==='__sold'?' on':'')+'" data-act="c-tag" data-tag="__sold">Vendidos<span class="n">'+holdRecords('vendido').length+'</span></button>';
   $('#c-view').textContent=S.ui.cview==='group'?'▤ Agrupado':'☰ Lista';
-  const list=filteredItems(), box=$('#c-list');
-  if(!S.items.length){ box.innerHTML='<div class="empty"><b>Estoque vazio</b>As categorias nascem das tags que você põe nos itens.<br><br><button class="btn pri" data-act="goto" data-tab="cadastrar">+ Cadastrar item</button></div>'; return; }
+  const box=$('#c-list');
+  if(S.ui.ctag==='__rent'||S.ui.ctag==='__sold'){ renderHoldList(box,S.ui.ctag==='__sold'); return; }
+  const list=filteredItems();
+  if(!S.items.length&&!S.all.length){ box.innerHTML='<div class="empty"><b>Estoque vazio</b>As categorias nascem das tags que você põe nos itens.<br><br><button class="btn pri" data-act="goto" data-tab="cadastrar">+ Cadastrar item</button></div>'; return; }
   if(!list.length){ box.innerHTML='<div class="empty"><b>Nada encontrado</b>Ajuste a busca ou os filtros.</div>'; return; }
   const totalUnits=list.reduce((s,i)=>s+totalQty(i),0);
   let html='<div class="dim" style="font-size:12px;margin-bottom:8px">'+list.length+' item(ns) · '+totalUnits+' unidade(s)</div>';
@@ -956,7 +1043,38 @@ function renderCategorias(){
   box.innerHTML=html;
 }
 
+/* lista exclusiva de alugados / vendidos (aba Categorias) */
+function holdRowHTML({it,h}){
+  const sold=h.kind==='vendido', late=isOverdue(h), hasPrice=h.price!==''&&h.price!=null&&num(h.price)>0;
+  const sub=sold?'Vendido para '+contactName(h.contactId)+(h.date?' · '+fmtDate(h.date):''):'Com '+contactName(h.contactId)+' · '+rentLine(h);
+  const meta=sold?(hasPrice?'<b>'+esc(money(h.price))+'</b>':'<span class="dim">sem valor</span>'):(late?'<span class="badge st-cancelado">atrasado</span>':'<span class="badge st-alugado">alugado</span>')+(hasPrice?'<span class="dim">'+esc(money(h.price))+'</span>':'');
+  return '<button class="irow" data-act="open-item" data-id="'+esc(it.id)+'"><span class="thumb">'+(it.thumb?'<img alt="" src="'+esc(it.thumb)+'">':'▢')+'</span>'+
+    '<span class="imain"><b>'+(holdQty(h)>1?holdQty(h)+'× ':'')+esc(it.name)+'</b><small>'+esc(sub)+'</small>'+(it.model&&it.model!==it.name?'<small>'+esc(it.model)+'</small>':'')+'</span><span class="imeta">'+meta+'</span></button>';
+}
+function renderHoldList(box,sold){
+  const q=norm(S.ui.q.trim());
+  let recs=holdRecords(sold?'vendido':'alugado').filter(({it,h})=>!q||q.split(/\s+/).every(w=>norm([it.name,it.model,it.serial,contactName(h.contactId),h.note].join(' ')).includes(w)));
+  recs.sort(sold?(a,b)=>(b.h.date||'').localeCompare(a.h.date||''):(a,b)=>(a.h.until||'9999').localeCompare(b.h.until||'9999'));
+  if(!recs.length){ box.innerHTML='<div class="empty"><b>'+(sold?'Nenhuma venda registrada':'Nada alugado agora')+'</b>Use “Alugar / Vender” na ficha de um item ou na ficha do contato.</div>'; return; }
+  const units=recs.reduce((s,r)=>s+holdQty(r.h),0), total=recs.reduce((s,r)=>s+num(r.h.price),0);
+  box.innerHTML='<div class="dim" style="font-size:12px;margin-bottom:8px">'+(sold?'Fora do estoque · ':'')+recs.length+' registro(s) · '+units+' unidade(s)'+(total?' · '+money(total):'')+'</div>'+recs.map(holdRowHTML).join('');
+}
+
 /* ---------- DETALHE DO ITEM ---------- */
+function holdingsHTML(it){
+  const rank=h=>(h.kind==='alugado'&&!h.returnedOn)?0:1;
+  const hs=(it.holdings||[]).slice().sort((a,b)=>rank(a)-rank(b)||(b.from||b.date||'').localeCompare(a.from||a.date||''));
+  if(!hs.length) return '<div class="dim">Nunca foi alugado nem vendido.</div>';
+  return hs.map(h=>{
+    const sold=h.kind==='vendido', active=!sold&&!h.returnedOn, late=isOverdue(h);
+    const title=sold?'<span class="badge st-vendido">Vendido</span>':active?'<span class="badge '+(late?'st-cancelado':'st-alugado')+'">'+(late?'Atrasado':'Alugado')+'</span>':'<span class="badge st-baixado">Devolvido</span>';
+    const info=[holdQty(h)>1?holdQty(h)+' un.':'',sold?(h.date?fmtDate(h.date):''):rentLine(h),h.returnedOn?'devolvido em '+fmtDate(h.returnedOn):'',(h.price!==''&&h.price!=null&&num(h.price))?money(h.price):'',h.note||''].filter(Boolean).join(' · ');
+    const ids=' data-item="'+esc(it.id)+'" data-hid="'+esc(h.id)+'"';
+    const acts=active?'<button class="btn sm" data-act="h-return"'+ids+'>Devolvido</button><button class="btn sm ghost" data-act="h-extend"'+ids+'>Prazo</button><button class="btn sm danger" data-act="h-del"'+ids+' aria-label="Remover registro">✕</button>'
+      :'<button class="btn sm danger" data-act="h-del"'+ids+'>'+(sold?'Desfazer venda':'✕')+'</button>';
+    return '<div class="mrow"><div style="min-width:0">'+title+' '+contactBtn(h.contactId)+'<br><small class="dim">'+esc(info)+'</small></div><div class="row" style="flex:none;justify-content:flex-end">'+acts+'</div></div>';
+  }).join('');
+}
 async function getPhotos(id,force){
   if(!force&&S.photoCache.has(id)) return S.photoCache.get(id);
   const snap=await db.collection(COL.photos).where('itemId','==',id).get();
@@ -974,9 +1092,10 @@ function openItem(id){
   if(S.detail) S.detail.close();
   const m=openModal({title:it.name,cls:'wide',foot:true,body:''});
   m.itemId=id; S.detail=m; m.opts.onClose=()=>{ if(S.detail===m) S.detail=null; };
-  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn blue" data-act="d-labels">Etiqueta</button><button class="btn pri" data-act="d-edit">Editar</button>';
+  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn blue" data-act="d-move">Alugar / Vender</button><button class="btn" data-act="d-labels">Etiqueta</button><button class="btn pri" data-act="d-edit">Editar</button>';
   m.el.addEventListener('click',e=>{const b=e.target.closest('[data-act]'); if(!b) return; const a=b.dataset.act;
     if(a==='d-edit') openItemEdit(m.itemId);
+    else if(a==='d-move') openMove({itemId:m.itemId,kind:b.dataset.kind});
     else if(a==='d-labels'){const x=S.itemsById.get(m.itemId); if(x) openLabels([x]);}
     else if(a==='view-photo'){const p=(S.photoCache.get(m.itemId)||[])[+b.dataset.i]; if(p) openViewer(p.data);}
     else if(a==='m-toggle'){const f=$('#m-form',m.el); f.classList.toggle('hide'); if(!f.classList.contains('hide')) $('#m-desc',m.el).focus();}
@@ -990,18 +1109,21 @@ function renderDetail(m){
   const top=m.body.scrollTop;
   m.setTitle(it.name);
   const s=dayStats([it],todayISO());
-  const avail=it.mode==='qty'?s.F+' de '+s.T+' livres hoje':(s.U?'indisponível hoje':s.R?'em evento hoje':'livre hoje');
+  const rents=activeRentals(it), soldAll=totalQty(it)===0&&soldQty(it)>0;
+  const avail=soldAll?'fora do estoque':it.mode==='qty'?s.F+' de '+s.T+' livres hoje'+(s.L?' · '+s.L+' alugada(s)':''):(s.L?'alugado hoje':s.U?'indisponível hoje':s.R?'em evento hoje':'livre hoje');
   const fields=ITEM_FIELDS.filter(f=>!['name','status','condition','notes'].includes(f.key)&&(!f.showIf||f.showIf(it))&&String(it[f.key]==null?'':it[f.key]).trim()!==''&&!(f.type==='number'&&f.key==='unavailQty'&&!num(it[f.key])));
   const kv=fields.map(f=>'<div><span>'+esc(f.label)+'</span><b>'+fieldValueHTML(f,it[f.key])+'</b></div>').join('')+(it.custom||[]).filter(c=>c.k).map(c=>'<div><span>'+esc(c.k)+'</span><b>'+esc(c.v)+'</b></div>').join('');
   const maint=(it.maintenance||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const uses=S.events.filter(ev=>ev._m.has(it.id)).sort((a,b)=>b.start.localeCompare(a.start));
   const maintCost=maint.reduce((t,x)=>t+num(x.cost),0);
   m.body.innerHTML=
-   '<div class="row" style="margin-bottom:10px">'+statusBadge(it.status)+condHTML(it.condition)+'<span class="'+(s.F===0?'bad':'good')+'">'+esc(avail)+'</span></div>'+
+   '<div class="row" style="margin-bottom:10px">'+(soldAll?'<span class="badge st-vendido">Vendido</span>':statusBadge(it.status))+(rents.length?'<span class="badge st-alugado">Alugado: '+esc(rents.map(h=>contactName(h.contactId)).filter((v,i,a)=>a.indexOf(v)===i).join(', '))+'</span>':'')+condHTML(it.condition)+'<span class="'+(s.F===0&&!soldAll?'bad':'good')+'">'+esc(avail)+'</span></div>'+
    ((it.tags||[]).length?'<div class="tagline" style="margin-bottom:10px">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</div>':'')+
    '<div id="d-photos" class="dim" style="margin-bottom:12px">'+(it.photoCount?'Carregando fotos…':'')+'</div>'+
-   (kv?'<div class="kv">'+kv+'</div>':'')+
+   (kv||soldQty(it)?'<div class="kv">'+kv+(soldQty(it)&&it.mode==='qty'?'<div><span>Em estoque</span><b>'+totalQty(it)+' (vendidos: '+soldQty(it)+')</b></div>':'')+'</div>':'')+
    (it.notes?'<div class="h3">Observações</div><div class="pre">'+esc(it.notes)+'</div>':'')+
+   '<div class="h3">Alugado / vendido'+((it.holdings||[]).length?' · '+it.holdings.length+' registro(s)':'')+'</div>'+
+   '<div class="row" style="margin-bottom:8px"><button class="btn sm blue" data-act="d-move" data-kind="alugado">+ Alugar</button><button class="btn sm blue" data-act="d-move" data-kind="vendido">+ Vender</button></div>'+holdingsHTML(it)+
    (it.qrEnabled?'<div class="h3">QR Code</div>'+qrBlockHTML(it):'')+
    '<div class="h3">Manutenção'+(maint.length?' · '+maint.length+' registro(s)'+(maintCost?' · '+money(maintCost):''):'')+'</div>'+
    '<div class="row" style="margin-bottom:8px"><button class="btn sm" data-act="m-toggle">+ Registrar manutenção</button></div>'+
@@ -1192,7 +1314,7 @@ async function saveItemDraft(ctx,again){
   if(isQty&&qty<1){ toast('A quantidade total deve ser 1 ou mais','warn'); return; }
   if(isQty&&num(d.unavailQty)>qty){ toast('A quantidade indisponível não pode passar do total','warn'); return; }
   const ser=norm(d.serial).trim();
-  if(ser){ const dup=S.items.find(x=>x.id!==d.id&&norm(x.serial).trim()===ser); if(dup){ toast('O nº de série já está no item “'+dup.name+'”','warn',4000); return; } }
+  if(ser){ const dup=S.all.find(x=>x.id!==d.id&&norm(x.serial).trim()===ser); if(dup){ toast('O nº de série já está no item “'+dup.name+'”','warn',4000); return; } }
   if(ctx.mode==='edit'&&!d._photosLoaded){ toast('Aguarde as fotos terminarem de carregar','warn'); return; }
   ctx.saving=true; $$('.actionbar .btn',ctx.root).forEach(b=>b.disabled=true);
   try{
@@ -1207,6 +1329,8 @@ async function saveItemDraft(ctx,again){
     data.qrEnabled=!!d.qrEnabled; data.updatedAt=now; if(ctx.mode==='create') data.createdAt=now;
     const final=d._photos||[], orig=d._orig||[], keep=new Set(final.map(p=>p.id));
     data.photoCount=final.length; data.thumb=final.length?await makeThumb(final[0].data):'';
+    const phChanged=final.length!==orig.length||final.some((p,i)=>p.isNew||!orig[i]||orig[i].id!==p.id);
+    data.photosAt=phChanged?now:(d.photosAt||0);
     if(JSON.stringify(data).length>200000){ toast('Item grande demais (muitas anotações). Reduza o texto.','err',4000); return; }
     const ref=db.collection(COL.items).doc(d.id);
     await runBatch(b=>{
@@ -1311,9 +1435,9 @@ function openEvent(id,presetDate){
   if(id&&!src){ toast('Evento não encontrado','warn'); return; }
   if(!db){ toast('Firebase indisponível','err'); return; }
   const day=presetDate||todayISO();
-  const draft=src?{id:src.id,name:src.name,client:src.client||'',place:src.place||'',start:src.start,end:src.end,status:src.status,notes:src.notes||'',alloc:clone(src.alloc)}
-    :{id:db.collection(COL.events).doc().id,name:'',client:'',place:'',start:day,end:day,status:'planejado',notes:'',alloc:[]};
-  const isNew=!src, ctx={draft,isNew,dirty:false,saving:false,q:'',tag:'all'};
+  const draft=src?{id:src.id,name:src.name,client:src.client||'',place:src.place||'',start:src.start,end:src.end,status:src.status,notes:src.notes||'',alloc:clone(src.alloc),contacts:clone(src.contacts||[])}
+    :{id:db.collection(COL.events).doc().id,name:'',client:'',place:'',start:day,end:day,status:'planejado',notes:'',alloc:[],contacts:[]};
+  const isNew=!src, ctx={draft,isNew,dirty:false,saving:false,q:'',tag:'all',tmpC:new Map()};
   const m=openModal({title:isNew?'Novo evento':'Evento: '+draft.name,cls:'wide',foot:true,noBackdrop:true,body:'',
     beforeClose:async()=>!ctx.dirty||await confirmBox('Descartar as alterações deste evento?',{ok:'Descartar',danger:true})});
   m.foot.innerHTML=(isNew?'':'<button class="btn danger" data-e="del" style="margin-right:auto">Excluir</button>')+'<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-e="save">Salvar evento</button>';
@@ -1327,6 +1451,9 @@ function openEvent(id,presetDate){
     '<div class="field"><label for="ev-end">Fim *</label><input type="date" id="ev-end" data-ef="end"></div>'+
     '<div class="field"><label for="ev-status">Situação</label><select id="ev-status" data-ef="status">'+EV_STATUS.map(s=>'<option value="'+s[0]+'">'+s[1]+'</option>').join('')+'</select><span class="hint">Cancelado libera os equipamentos</span></div>'+
     '<div class="field full"><label for="ev-notes">Observações</label><textarea id="ev-notes" data-ef="notes"></textarea></div></div></div>'+
+   '<div class="sect"><div class="h3" style="margin-top:0">Contatos do evento</div><div id="ev-contacts"></div>'+
+     '<div class="toolbar" style="margin:8px 0 0"><select id="ev-cpick" style="width:auto;flex:1;min-width:150px" aria-label="Contato"></select><div class="grow1"><input type="text" id="ev-crole" list="dl-roles" placeholder="Função no evento (ex.: Promotor)" autocomplete="off" aria-label="Função"></div><button class="btn sm" data-e="cadd">Adicionar</button><button class="btn sm blue" data-e="cnew">+ Novo contato</button></div>'+
+     '<datalist id="dl-roles">'+ROLE_SUGGEST.map(r=>'<option value="'+esc(r)+'"></option>').join('')+'</datalist></div>'+
    '<div class="sect"><div id="ev-sum"></div></div>'+
    '<div class="sect"><div class="h3">Adicionar equipamento</div>'+
      '<div id="ev-quick" style="margin-bottom:10px"></div>'+
@@ -1340,7 +1467,7 @@ function openEvent(id,presetDate){
   const getOv=()=>({exclude:isNew?null:draft.id,extra:draft.status==='cancelado'?null:allocMap(),range:[draft.start,draft.end]});
   const problems=ov=>{
     const out=new Map();
-    if(draft.status==='cancelado') return out;
+    if(draft.status==='cancelado'||draft.end<todayISO()) return out;
     for(const a of draft.alloc){
       const it=S.itemsById.get(a.itemId); if(!it){out.set(a.itemId,'item removido do estoque');continue;}
       const bad=eachDay(draft.start,draft.end).filter(d=>reservedFor(it.id,d,ov)>usableQty(it,d));
@@ -1348,7 +1475,7 @@ function openEvent(id,presetDate){
     }
     return out;
   };
-  const renderSum=()=>{
+  const renderSumInner=()=>{
     const box=$('#ev-sum',m.el);
     if(!validDates()){ box.innerHTML='<div class="empty"><b>Defina as datas do evento</b>O fim deve ser igual ou depois do início.</div>'; return; }
     const ov=getOv(), pr=problems(ov), days=diffDays(draft.start,draft.end)+1;
@@ -1365,6 +1492,7 @@ function openEvent(id,presetDate){
           '<div class="row">'+(isQ?'<input type="number" class="qty" min="1" max="'+totalQty(it)+'" value="'+num(a.qty)+'" data-eq="'+esc(a.itemId)+'" aria-label="Quantidade">':'')+'<button class="btn sm danger" data-e="rm" data-id="'+esc(a.itemId)+'" aria-label="Remover do evento">✕</button></div></div>';
       }).join(''):'<div class="empty">Nenhum equipamento separado ainda.<br>Use a busca abaixo para adicionar um por um.</div>');
   };
+  const renderSum=()=>{ if(ctx.rs) return; ctx.rs=true; try{ renderSumInner(); }finally{ ctx.rs=false; } };   /* evita redesenho repetido durante o blur */
   const renderQuick=()=>{
     const box=$('#ev-quick',m.el);
     if(!validDates()){ box.innerHTML=''; return; }
@@ -1388,8 +1516,16 @@ function openEvent(id,presetDate){
         '<div class="row">'+(isQ&&ok?'<input type="number" class="qty" min="1" max="'+av.free+'" value="1" data-pq="'+esc(it.id)+'" aria-label="Quantidade">':'')+'<button class="btn sm" data-e="add" data-id="'+esc(it.id)+'"'+(ok?'':' disabled')+'>Adicionar</button></div></div>';
     }).join('')+(list.length>60?'<div class="dim" style="padding:6px;font-size:12px">Mostrando 60 de '+list.length+'. Refine a busca.</div>':''):'<div class="empty" style="border:0">'+(S.items.length?'Nenhum item encontrado (ou todos já estão no evento).':'Cadastre itens primeiro na aba Cadastrar.')+'</div>';
   };
+  const cInfo=id=>S.contactsById.get(id)||ctx.tmpC.get(id);
+  const renderContacts=()=>{
+    const box=$('#ev-contacts',m.el), used=new Set(draft.contacts.map(c=>c.contactId));
+    box.innerHTML=draft.contacts.length?draft.contacts.map(c=>{const ci=cInfo(c.contactId); return '<div class="arow"><div style="min-width:0"><b>'+esc(ci?ci.name:'(contato removido)')+'</b>'+(c.role?' <span class="tag">'+esc(c.role)+'</span>':'')+'<br><small class="dim">'+esc(ci?[ci.company,ci.phone].filter(Boolean).join(' · '):'')+'</small></div><button class="btn sm danger" data-e="crm" data-id="'+esc(c.contactId)+'" aria-label="Remover contato">✕</button></div>';}).join(''):'<div class="dim" style="font-size:13px">Ninguém vinculado ainda (promotor, produtor técnico, cliente…).</div>';
+    const opts=S.contacts.filter(c=>!used.has(c.id)).slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+    $('#ev-cpick',m.el).innerHTML=opts.length?opts.map(c=>'<option value="'+esc(c.id)+'" data-role="'+esc((c.roles||[])[0]||'')+'">'+esc(c.name+(c.company?' — '+c.company:''))+'</option>').join(''):'<option value="">'+(S.contacts.length?'Todos já adicionados':'Nenhum contato cadastrado')+'</option>';
+    const first=$('#ev-cpick',m.el).selectedOptions[0]; if(first&&first.dataset.role&&!$('#ev-crole',m.el).value) $('#ev-crole',m.el).placeholder=first.dataset.role+' (padrão)';
+  };
   const renderAll=()=>{ renderSum(); renderQuick(); renderPick(); };
-  renderAll();
+  renderAll(); renderContacts();
 
   const setAlloc=(itemId,qty)=>{ const a=draft.alloc.find(x=>x.itemId===itemId); if(a) a.qty=qty; else draft.alloc.push({itemId,qty}); ctx.dirty=true; };
   m.body.addEventListener('input',e=>{
@@ -1405,6 +1541,7 @@ function openEvent(id,presetDate){
       if(t.dataset.ef==='end'&&draft.end<draft.start){ toast('O fim não pode ser antes do início','warn'); draft.end=draft.start; t.value=draft.end; }
       if(['start','end','status'].includes(t.dataset.ef)) renderAll();
     }else if(t.id==='ev-ptag'){ ctx.tag=t.value; renderPick(); }
+    else if(t.id==='ev-cpick'){ const o=t.selectedOptions[0]; $('#ev-crole',m.el).placeholder=(o&&o.dataset.role)?o.dataset.role+' (padrão)':'Função no evento (ex.: Promotor)'; }
     else if(t.dataset.eq){ const it=S.itemsById.get(t.dataset.eq); const max=it?totalQty(it):9999; let q=Math.floor(num(t.value)); if(q<1)q=1; if(q>max)q=max; t.value=q; setAlloc(t.dataset.eq,q); renderSum(); renderPick(); renderQuick(); }
   });
   m.el.addEventListener('click',async e=>{
@@ -1425,6 +1562,13 @@ function openEvent(id,presetDate){
       else if(need>0) toast('Só havia '+added+' livre(s): faltam '+need,'warn',4000);
       else toast(added+' × '+key+' adicionado(s)');
       renderSum(); renderPick(); renderQuick();
+    }else if(a==='cadd'){
+      const sel=$('#ev-cpick',m.el); if(!sel.value){ toast('Escolha um contato (ou crie um novo)','warn'); return; }
+      const role=$('#ev-crole',m.el).value.trim()||sel.selectedOptions[0].dataset.role||'';
+      draft.contacts.push({contactId:sel.value,role}); ctx.dirty=true; $('#ev-crole',m.el).value=''; renderContacts();
+    }else if(a==='crm'){ draft.contacts=draft.contacts.filter(c=>c.contactId!==b.dataset.id); ctx.dirty=true; renderContacts();
+    }else if(a==='cnew'){
+      openContact(null,{onSaved:(cid,data)=>{ ctx.tmpC.set(cid,data); if(!draft.contacts.some(c=>c.contactId===cid)){ draft.contacts.push({contactId:cid,role:$('#ev-crole',m.el).value.trim()||(data.roles||[])[0]||''}); ctx.dirty=true; } renderContacts(); setTimeout(renderContacts,250); }});
     }else if(a==='save') saveEvent();
     else if(a==='del'){
       if(!await confirmBox('Excluir o evento “'+draft.name+'”?\nOs equipamentos voltam a ficar livres nessas datas.',{ok:'Excluir evento',danger:true,title:'Excluir evento'})) return;
@@ -1442,7 +1586,8 @@ function openEvent(id,presetDate){
     try{
       const now=Date.now();
       const data={name,client:String(draft.client||'').trim(),place:String(draft.place||'').trim(),start:draft.start,end:draft.end,status:draft.status,notes:String(draft.notes||'').trim(),
-        alloc:draft.alloc.filter(a=>num(a.qty)>0).map(a=>({itemId:a.itemId,qty:Math.floor(num(a.qty))})),updatedAt:now};
+        alloc:draft.alloc.filter(a=>num(a.qty)>0).map(a=>({itemId:a.itemId,qty:Math.floor(num(a.qty))})),
+        contacts:draft.contacts.filter(c=>c.contactId).map(c=>({contactId:c.contactId,role:String(c.role||'').trim()})),updatedAt:now};
       if(isNew) data.createdAt=now;
       await runBatch(bt=>bt.set(db.collection(COL.events).doc(draft.id),data,{merge:true}));
       ctx.dirty=false; toast(isNew?'Evento criado':'Evento salvo'); m.close();
@@ -1452,18 +1597,340 @@ function openEvent(id,presetDate){
 }
 
 /* =====================================================================
+   CONTATOS: lista, ficha, formulário e "Alugar / Vender"
+   ===================================================================== */
+let ctShell=false;
+const initials = n=>String(n||'?').trim().split(/\s+/).slice(0,2).map(w=>w[0]).join('').toUpperCase()||'?';
+const digits = s=>String(s||'').replace(/\D/g,'');
+function contactRecs(id){ const out=[]; for(const it of S.all) for(const h of it.holdings||[]) if(h.contactId===id) out.push({it,h}); return out; }
+function contactSearchText(c){
+  return norm([c.name,c.company,c.cpf,digits(c.cpf),c.cnpj,digits(c.cnpj),c.phone,digits(c.phone),c.phone2,c.email,c.city,c.district,c.notes,(c.roles||[]).join(' ')].join(' '));
+}
+function ensureCtShell(){
+  if(ctShell) return; ctShell=true;
+  $('#view-contatos').innerHTML='<div class="card"><div class="toolbar"><div class="grow1"><input type="search" id="ct-q" placeholder="Buscar nome, empresa, telefone, CPF…" aria-label="Buscar contato"></div><button class="btn pri" data-act="new-contact">+ Novo contato</button></div><div class="chips" id="ct-chips"></div></div><div class="card" style="margin-top:14px" id="ct-list"></div>';
+  $('#ct-q').value=S.ui.cq;
+}
+function renderContatos(){
+  ensureCtShell();
+  const box=$('#ct-list');
+  if(S.contactsError){ box.innerHTML='<div class="empty"><b class="bad">Não foi possível ler os contatos</b>'+(S.contactsError==='permission-denied'?'Falta liberar a coleção <code>vrm_contacts</code> nas regras do Firebase.<br><br><button class="btn pri" data-act="rules">Ver como liberar</button>':'Erro: '+esc(S.contactsError))+'</div>'; $('#ct-chips').innerHTML=''; return; }
+  if(!S.loaded.contacts){ box.innerHTML='<div class="empty"><b>Carregando…</b></div>'; return; }
+  const withEq=S.contacts.filter(c=>contactRecs(c.id).some(r=>r.h.kind==='alugado'&&!r.h.returnedOn));
+  const roles=new Map(); S.contacts.forEach(c=>(c.roles||[]).forEach(r=>{const k=r.toLowerCase(); if(!roles.has(k)) roles.set(k,{name:r,n:0}); roles.get(k).n++;}));
+  const rl=Array.from(roles.values()).sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+  if(S.ui.crole!=='all'&&S.ui.crole!=='__equip'&&!roles.has(S.ui.crole.toLowerCase())) S.ui.crole='all';
+  $('#ct-chips').innerHTML='<button class="chip'+(S.ui.crole==='all'?' on':'')+'" data-act="ct-role" data-role="all">Todos<span class="n">'+S.contacts.length+'</span></button>'+
+    rl.map(r=>'<button class="chip'+(S.ui.crole.toLowerCase()===r.name.toLowerCase()?' on':'')+'" data-act="ct-role" data-role="'+esc(r.name)+'">'+esc(r.name)+'<span class="n">'+r.n+'</span></button>').join('')+
+    '<button class="chip sp'+(S.ui.crole==='__equip'?' on':'')+'" data-act="ct-role" data-role="__equip">Com equipamento<span class="n">'+withEq.length+'</span></button>';
+  if(!S.contacts.length){ box.innerHTML='<div class="empty"><b>Nenhum contato ainda</b>Cadastre promotores, produtores técnicos, clientes… e ligue-os a eventos e a equipamentos alugados ou vendidos.<br><br><button class="btn pri" data-act="new-contact">+ Novo contato</button></div>'; return; }
+  const q=norm(S.ui.cq.trim());
+  const list=S.contacts.filter(c=>{
+    if(q&&!q.split(/\s+/).every(w=>contactSearchText(c).includes(w))) return false;
+    if(S.ui.crole==='__equip') return withEq.includes(c);
+    if(S.ui.crole!=='all') return (c.roles||[]).some(r=>r.toLowerCase()===S.ui.crole.toLowerCase());
+    return true;
+  }).sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+  if(!list.length){ box.innerHTML='<div class="empty"><b>Nenhum contato encontrado</b>Ajuste a busca ou o filtro.</div>'; return; }
+  box.innerHTML='<div class="dim" style="font-size:12px;margin-bottom:8px">'+list.length+' contato(s)</div>'+list.map(c=>{
+    const recs=contactRecs(c.id), out=recs.filter(r=>r.h.kind==='alugado'&&!r.h.returnedOn), bought=recs.filter(r=>r.h.kind==='vendido');
+    const outN=out.reduce((s,r)=>s+holdQty(r.h),0), boughtN=bought.reduce((s,r)=>s+holdQty(r.h),0), late=out.some(r=>isOverdue(r.h));
+    return '<button class="irow" data-act="open-contact" data-id="'+esc(c.id)+'"><span class="thumb ini">'+esc(initials(c.name))+'</span>'+
+      '<span class="imain"><b>'+esc(c.name)+'</b><small>'+esc([c.company,c.phone].filter(Boolean).join(' · ')||'—')+'</small>'+((c.roles||[]).length?'<span class="tagline">'+c.roles.map(r=>'<span class="tag">'+esc(r)+'</span>').join('')+'</span>':'')+'</span>'+
+      '<span class="imeta">'+(outN?'<span class="badge '+(late?'st-cancelado':'st-alugado')+'">'+outN+' alugado(s)'+(late?' · atrasado':'')+'</span>':'')+(boughtN?'<span class="badge st-vendido">'+boughtN+' comprado(s)</span>':'')+'</span></button>';
+  }).join('');
+}
+
+/* ---------- formulário do contato ---------- */
+function openContact(id,opts){
+  opts=opts||{};
+  if(!db){ toast('Firebase indisponível','err'); return; }
+  const src=id?S.contactsById.get(id):null;
+  if(id&&!src){ toast('Contato não encontrado','warn'); return; }
+  const draft=src?clone(src):DEFAULT_CONTACT(); draft.id=src?src.id:db.collection(COL.contacts).doc().id;
+  const isNew=!src, ctx={dirty:false,saving:false}, uid=Math.random().toString(36).slice(2,6);
+  const m=openModal({title:isNew?'Novo contato':'Editar: '+draft.name,cls:'wide',foot:true,noBackdrop:true,body:'',
+    beforeClose:async()=>!ctx.dirty||await confirmBox('Descartar as alterações deste contato?',{ok:'Descartar',danger:true})});
+  m.foot.innerHTML=(isNew?'':'<button class="btn danger" data-k="del" style="margin-right:auto">Excluir</button>')+'<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-k="save">Salvar contato</button>';
+  const secs=[]; CONTACT_FIELDS.forEach(f=>{ if(!secs.includes(f.sec)) secs.push(f.sec); });
+  const cf=f=>{
+    const idf='cf-'+uid+'-'+f.key; let input;
+    if(f.type==='textarea') input='<textarea id="'+idf+'" data-cf="'+f.key+'"></textarea>';
+    else input='<input type="'+f.type+'" id="'+idf+'" data-cf="'+f.key+'" placeholder="'+esc(f.ph||'')+'" autocomplete="off"'+(f.suggest?' list="dl-'+uid+'-'+f.key+'"':'')+(f.numeric?' inputmode="numeric"':'')+'>';
+    return '<div class="field'+(f.type==='textarea'?' full':'')+'"><label for="'+idf+'">'+esc(f.label)+(f.req?' *':'')+'</label>'+input+'</div>';
+  };
+  const dls=CONTACT_FIELDS.filter(f=>f.suggest).map(f=>{ const s=new Set(S.contacts.map(c=>(c[f.key]||'').trim()).filter(Boolean)); return '<datalist id="dl-'+uid+'-'+f.key+'">'+Array.from(s).sort().map(v=>'<option value="'+esc(v)+'"></option>').join('')+'</datalist>'; }).join('');
+  m.body.innerHTML=dls+secs.map((s,i)=>'<div class="sect"><div class="h3">'+esc(s)+'</div><div class="fgrid">'+CONTACT_FIELDS.filter(f=>f.sec===s).map(cf).join('')+'</div></div>'+(i===0?'<div class="sect" id="ct-roles"></div>':'')).join('');
+  CONTACT_FIELDS.forEach(f=>{ const el=$('[data-cf="'+f.key+'"]',m.body); if(el) el.value=draft[f.key]||''; });
+  const allRoles=()=>{ const s=new Map(); ROLE_SUGGEST.forEach(r=>s.set(r.toLowerCase(),r)); S.contacts.forEach(c=>(c.roles||[]).forEach(r=>{ if(!s.has(r.toLowerCase())) s.set(r.toLowerCase(),r); })); return Array.from(s.values()); };
+  const renderRoles=()=>{
+    const used=new Set(draft.roles.map(r=>r.toLowerCase()));
+    $('#ct-roles',m.el).innerHTML='<div class="h3">Funções</div><div class="tagsin">'+draft.roles.map(r=>'<span class="tag rm" data-k="rrm" data-r="'+esc(r)+'" title="Remover">'+esc(r)+' ✕</span>').join('')+
+      '<input type="text" data-role="role-in" placeholder="'+(draft.roles.length?'Outra função…':'Ex.: Promotor, Produtor técnico (Enter)')+'" enterkeyhint="done" autocomplete="off" aria-label="Adicionar função"></div>'+
+      '<div class="chips" style="margin-top:8px">'+allRoles().filter(r=>!used.has(r.toLowerCase())).map(r=>'<button type="button" class="chip" data-k="radd" data-r="'+esc(r)+'">+ '+esc(r)+'</button>').join('')+'</div>';
+  };
+  const addRole=raw=>{
+    const inp=$('[data-role="role-in"]',m.el); if(inp) inp.value='';
+    String(raw||'').split(',').forEach(x=>{ const t=x.trim().replace(/\s+/g,' '); if(t&&!draft.roles.some(y=>y.toLowerCase()===t.toLowerCase())&&draft.roles.length<10){ const known=allRoles().find(k=>k.toLowerCase()===t.toLowerCase()); draft.roles.push(known||t); } });
+    ctx.dirty=true; renderRoles(); const i=$('[data-role="role-in"]',m.el); if(i) i.focus();
+  };
+  renderRoles();
+  m.body.addEventListener('input',e=>{ const t=e.target; if(t.dataset.cf){ draft[t.dataset.cf]=t.value; ctx.dirty=true; if(t.dataset.cf==='name') m.setTitle(t.value?(isNew?'Novo: ':'Editar: ')+t.value:(isNew?'Novo contato':'Editar contato')); } else if(t.dataset.role==='role-in'&&t.value.includes(',')) addRole(t.value); });
+  m.body.addEventListener('change',e=>{ const t=e.target; if(t.dataset.role==='role-in'&&t.isConnected&&t.value.trim()) addRole(t.value); });
+  m.body.addEventListener('keydown',e=>{ const t=e.target; if(t.dataset&&t.dataset.role==='role-in'){ if(e.key==='Enter'){ e.preventDefault(); if(t.value.trim()) addRole(t.value); } else if(e.key==='Backspace'&&!t.value&&draft.roles.length){ draft.roles.pop(); ctx.dirty=true; renderRoles(); const i=$('[data-role="role-in"]',m.el); if(i) i.focus(); } } });
+  m.el.addEventListener('click',async e=>{
+    const b=e.target.closest('[data-k]'); if(!b) return; const k=b.dataset.k;
+    if(k==='radd') addRole(b.dataset.r);
+    else if(k==='rrm'){ draft.roles=draft.roles.filter(r=>r!==b.dataset.r); ctx.dirty=true; renderRoles(); }
+    else if(k==='save') save();
+    else if(k==='del') del();
+  });
+  async function save(){
+    if(ctx.saving) return;
+    const name=String(draft.name||'').trim();
+    if(!name){ toast('Informe o nome do contato','warn'); const i=$('[data-cf="name"]',m.el); if(i){i.focus();i.scrollIntoView({block:'center'});} return; }
+    const cpf=digits(draft.cpf);
+    if(cpf){ const dup=S.contacts.find(c=>c.id!==draft.id&&digits(c.cpf)===cpf); if(dup&&!await confirmBox('O CPF já está no contato “'+dup.name+'”.\nSalvar mesmo assim?',{ok:'Salvar mesmo assim',title:'CPF repetido'})) return; }
+    ctx.saving=true; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=true);
+    try{
+      const now=Date.now(), data={};
+      CONTACT_FIELDS.forEach(f=>{ data[f.key]=String(draft[f.key]||'').trim(); });
+      data.name=name; data.roles=draft.roles.slice(); data.updatedAt=now; if(isNew) data.createdAt=now;
+      await runBatch(bt=>bt.set(db.collection(COL.contacts).doc(draft.id),clean(data),{merge:true}));
+      ctx.dirty=false; toast(isNew?'Contato criado':'Contato salvo'); m.close();
+      if(opts.onSaved) opts.onSaved(draft.id,data);
+    }catch(err){ handleWriteError(err); ctx.saving=false; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=false); }
+  }
+  async function del(){
+    const recs=contactRecs(draft.id), evs=S.events.filter(ev=>(ev.contacts||[]).some(c=>c.contactId===draft.id));
+    const msg='Excluir “'+draft.name+'”?'+(evs.length?'\n\nEle será tirado de '+evs.length+' evento(s).':'')+(recs.length?'\n\nHá '+recs.length+' registro(s) de aluguel/venda ligados a ele; o histórico ficará como “(contato removido)”.':'')+'\n\nIsso não pode ser desfeito.';
+    if(!await confirmBox(msg,{ok:'Excluir contato',danger:true,title:'Excluir contato'})) return;
+    try{
+      await runBatch(bt=>{ bt.delete(db.collection(COL.contacts).doc(draft.id)); evs.forEach(ev=>bt.update(db.collection(COL.events).doc(ev.id),{contacts:ev.contacts.filter(c=>c.contactId!==draft.id),updatedAt:Date.now()})); });
+      ctx.dirty=false; toast('Contato excluído'); m.close(); if(S.cdetail) S.cdetail.close();
+    }catch(err){ handleWriteError(err); }
+  }
+  setTimeout(()=>{ if(isNew&&!matchMedia('(pointer:coarse)').matches){ const i=$('[data-cf="name"]',m.el); if(i) i.focus(); } },50);
+}
+
+/* ---------- ficha do contato ---------- */
+function openContactView(id){
+  const c=S.contactsById.get(id); if(!c){ toast('Contato não encontrado','warn'); return; }
+  if(S.cdetail) S.cdetail.close();
+  const m=openModal({title:c.name,cls:'wide',foot:true,body:''});
+  m.contactId=id; S.cdetail=m; m.opts.onClose=()=>{ if(S.cdetail===m) S.cdetail=null; };
+  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn blue" data-act="cv-move">Alugar / Vender</button><button class="btn pri" data-act="cv-edit">Editar</button>';
+  m.el.addEventListener('click',e=>{ const b=e.target.closest('[data-act]'); if(!b) return;
+    if(b.dataset.act==='cv-edit') openContact(m.contactId); else if(b.dataset.act==='cv-move') openMove({contactId:m.contactId,kind:b.dataset.kind}); });
+  renderContactView(m);
+}
+function renderContactView(m){
+  const c=S.contactsById.get(m.contactId); if(!c){ m.close(); return; }
+  const top=m.body.scrollTop; m.setTitle(c.name);
+  const addr=contactAddress(c), ph=digits(c.phone), wa=ph?(ph.length<=11?'55'+ph:ph):'';
+  const links=(ph?'<a class="btn sm" href="tel:'+esc(String(c.phone).replace(/[^\d+]/g,''))+'">Ligar</a>':'')+(wa?'<a class="btn sm" target="_blank" rel="noopener" href="https://wa.me/'+wa+'">WhatsApp</a>':'')+(c.email?'<a class="btn sm" href="mailto:'+esc(c.email)+'">E-mail</a>':'')+(addr?'<a class="btn sm" target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(addr.replace(/ · /g,', '))+'">Mapa</a>':'');
+  const kv=CONTACT_FIELDS.filter(f=>f.sec!=='Endereço'&&f.key!=='name'&&f.key!=='notes'&&String(c[f.key]||'').trim()).map(f=>'<div><span>'+esc(f.label)+'</span><b>'+esc(c[f.key])+'</b></div>').join('')+(addr?'<div style="grid-column:1/-1"><span>Endereço</span><b>'+esc(addr)+'</b></div>':'');
+  const recs=contactRecs(c.id), rank=r=>(r.h.kind==='alugado'&&!r.h.returnedOn)?0:1;
+  const now=recs.filter(r=>rank(r)===0).sort((a,b)=>(a.h.until||'9999').localeCompare(b.h.until||'9999'));
+  const hist=recs.filter(r=>rank(r)===1).sort((a,b)=>(b.h.returnedOn||b.h.date||b.h.from||'').localeCompare(a.h.returnedOn||a.h.date||a.h.from||''));
+  const row=({it,h})=>{
+    const sold=h.kind==='vendido', active=!sold&&!h.returnedOn, late=isOverdue(h);
+    const title=sold?'<span class="badge st-vendido">Vendido</span>':active?'<span class="badge '+(late?'st-cancelado':'st-alugado')+'">'+(late?'Atrasado':'Alugado')+'</span>':'<span class="badge st-baixado">Devolvido</span>';
+    const info=[sold?(h.date?fmtDate(h.date):''):rentLine(h),h.returnedOn?'devolvido em '+fmtDate(h.returnedOn):'',(h.price!==''&&h.price!=null&&num(h.price))?money(h.price):'',h.note||''].filter(Boolean).join(' · ');
+    const ids=' data-item="'+esc(it.id)+'" data-hid="'+esc(h.id)+'"';
+    const acts=active?'<button class="btn sm" data-act="h-return"'+ids+'>Devolvido</button><button class="btn sm ghost" data-act="h-extend"'+ids+'>Prazo</button><button class="btn sm danger" data-act="h-del"'+ids+' aria-label="Remover registro">✕</button>':'<button class="btn sm danger" data-act="h-del"'+ids+'>'+(sold?'Desfazer venda':'✕')+'</button>';
+    return '<div class="mrow"><div style="min-width:0">'+title+' <button type="button" class="linkbtn" data-act="open-item" data-id="'+esc(it.id)+'">'+(holdQty(h)>1?holdQty(h)+'× ':'')+esc(it.name)+'</button><br><small class="dim">'+esc([it.model&&it.model!==it.name?it.model:'',info].filter(Boolean).join(' · '))+'</small></div><div class="row" style="flex:none;justify-content:flex-end">'+acts+'</div></div>';
+  };
+  const evs=S.events.filter(ev=>(ev.contacts||[]).some(x=>x.contactId===c.id)).sort((a,b)=>b.start.localeCompare(a.start));
+  m.body.innerHTML=
+    ((c.roles||[]).length?'<div class="tagline" style="margin-bottom:10px">'+c.roles.map(r=>'<span class="tag">'+esc(r)+'</span>').join('')+'</div>':'')+
+    (links?'<div class="row" style="margin-bottom:12px">'+links+'</div>':'')+
+    (kv?'<div class="kv">'+kv+'</div>':'<div class="dim">Sem dados de contato preenchidos.</div>')+
+    (c.notes?'<div class="h3">Observações</div><div class="pre">'+esc(c.notes)+'</div>':'')+
+    '<div class="h3">Equipamentos com este contato'+(now.length?' · '+now.reduce((s,r)=>s+holdQty(r.h),0)+' un.':'')+'</div>'+
+    '<div class="row" style="margin-bottom:8px"><button class="btn sm blue" data-act="cv-move" data-kind="alugado">+ Alugar</button><button class="btn sm blue" data-act="cv-move" data-kind="vendido">+ Vender</button></div>'+
+    (now.length?now.map(row).join(''):'<div class="dim">Nada alugado no momento.</div>')+
+    (hist.length?'<div class="h3">Histórico (devolvidos e vendidos) · '+hist.length+'</div>'+hist.map(row).join(''):'')+
+    '<div class="h3">Eventos'+(evs.length?' · '+evs.length:'')+'</div>'+
+    (evs.length?evs.map(ev=>{ const role=(ev.contacts.find(x=>x.contactId===c.id)||{}).role; return '<button class="erow" style="margin-top:6px" data-act="open-event" data-id="'+esc(ev.id)+'"><span class="edate"><b>'+fmtShort(ev.start)+'</b><small>'+(ev.end!==ev.start?'até '+fmtShort(ev.end):ev.start.slice(0,4))+'</small></span><span class="emain"><b>'+esc(ev.name)+'</b><small>'+esc(role||'sem função definida')+'</small></span><span class="emeta"><span class="badge st-'+ev.status+'">'+esc(label(EV_STATUS,ev.status))+'</span></span></button>'; }).join(''):'<div class="dim">Não está ligado a nenhum evento.</div>');
+  m.body.scrollTop=top;
+}
+
+/* ---------- registro: devolver / prazo / remover ---------- */
+async function updateHoldings(itemId,fn){
+  const it=S.itemsById.get(itemId); if(!it) return false;
+  const hs=clone(it.holdings||[]); fn(hs);
+  try{ await runBatch(b=>b.update(db.collection(COL.items).doc(itemId),{holdings:clean(hs),updatedAt:Date.now()})); return true; }
+  catch(e){ handleWriteError(e); return false; }
+}
+async function holdingAction(a,itemId,hid){
+  const it=S.itemsById.get(itemId), h=it&&(it.holdings||[]).find(x=>x.id===hid); if(!h){ toast('Registro não encontrado','warn'); return; }
+  if(a==='h-return'){
+    if(!await confirmBox('Registrar a devolução de “'+it.name+'” hoje ('+fmtDate(todayISO())+')?\nEle volta a ficar disponível.',{ok:'Registrar devolução',title:'Devolução'})) return;
+    if(await updateHoldings(itemId,hs=>{ hs.find(x=>x.id===hid).returnedOn=todayISO(); })) toast('Devolução registrada');
+  }else if(a==='h-del'){
+    const sold=h.kind==='vendido';
+    if(!await confirmBox(sold?'Desfazer a venda de “'+it.name+'”?\nO item volta para o estoque.':'Remover este registro de aluguel de “'+it.name+'”?',{ok:sold?'Desfazer venda':'Remover',danger:true,title:sold?'Desfazer venda':'Remover registro'})) return;
+    if(await updateHoldings(itemId,hs=>{ hs.splice(hs.findIndex(x=>x.id===hid),1); })) toast(sold?'Venda desfeita':'Registro removido');
+  }else if(a==='h-extend'){
+    const m=openModal({title:'Prazo de devolução',cls:'small',foot:true,body:'<div class="field"><label for="x-until">Devolução prevista</label><input type="date" id="x-until"></div><p class="dim" style="font-size:12px;margin-bottom:0">Deixe em branco para “sem prazo definido”.</p>'});
+    $('#x-until',m.el).value=h.until||'';
+    m.foot.innerHTML='<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-x="ok">Salvar</button>';
+    m.el.addEventListener('click',async e=>{ if(!e.target.closest('[data-x="ok"]')) return; const v=$('#x-until',m.el).value;
+      if(v&&h.from&&v<h.from){ toast('A devolução não pode ser antes do início','warn'); return; }
+      if(await updateHoldings(itemId,hs=>{ hs.find(x=>x.id===hid).until=v; })){ toast('Prazo atualizado'); m.close(); } });
+  }
+}
+
+/* ---------- Alugar / Vender ---------- */
+function openMove(opts){
+  opts=opts||{};
+  if(!db){ toast('Firebase indisponível','err'); return; }
+  if(S.contactsError==='permission-denied'){ showRulesHelp(); return; }
+  const st={kind:opts.kind==='vendido'?'vendido':'alugado',contactId:opts.contactId||'',from:todayISO(),until:'',date:todayISO(),unit:'',note:'',sel:new Map(),q:'',tag:'all',tmpC:new Map(),saving:false};
+  if(opts.itemId&&S.itemsById.has(opts.itemId)) st.sel.set(opts.itemId,1);
+  const m=openModal({title:'',cls:'wide',foot:true,noBackdrop:true,body:''});
+  const tags=tagIndex();
+  m.body.innerHTML=
+   '<div class="sect"><div class="row" style="margin-bottom:10px"><button type="button" class="chip" data-v="kind" data-kind="alugado">Alugar</button><button type="button" class="chip" data-v="kind" data-kind="vendido">Vender</button></div>'+
+   '<div class="fgrid">'+
+    '<div class="field full"><label for="mv-contact">Contato *</label><div class="row"><select id="mv-contact" style="flex:1;min-width:0"></select><button type="button" class="btn sm blue" data-v="cnew">+ Novo contato</button></div></div>'+
+    '<div class="field mv-rent"><label for="mv-from">Início</label><input type="date" id="mv-from"></div>'+
+    '<div class="field mv-rent"><label for="mv-until">Devolução prevista</label><input type="date" id="mv-until"><span class="hint">Em branco = sem prazo; continua fora até você dar baixa</span></div>'+
+    '<div class="field mv-sale"><label for="mv-date">Data da venda</label><input type="date" id="mv-date"></div>'+
+    '<div class="field"><label for="mv-unit" id="mv-unit-l">Valor por unidade (R$)</label><input type="number" id="mv-unit" min="0" step="0.01" inputmode="decimal"></div>'+
+    '<div class="field full"><label for="mv-note">Observação</label><input type="text" id="mv-note" autocomplete="off" placeholder="Ex.: caução, forma de pagamento, evento…"></div></div>'+
+   '<div id="mv-total" class="dim" style="margin-top:8px;font-size:13px"></div></div>'+
+   '<div class="sect"><div class="h3" style="margin-top:0">Equipamentos selecionados</div><div id="mv-sel"></div></div>'+
+   '<div class="sect"><div class="h3" style="margin-top:0">Escolher equipamento</div><div class="toolbar"><div class="grow1"><input type="search" id="mv-q" placeholder="Buscar por nome, modelo ou série…" aria-label="Buscar equipamento"></div><select id="mv-tag" style="width:auto" aria-label="Categoria"><option value="all">Todas as categorias</option>'+tags.map(t=>'<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>').join('')+'</select></div><div class="pick" id="mv-pick"></div></div>';
+  m.foot.innerHTML='<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-v="save"></button>';
+  const isRent=()=>st.kind==='alugado';
+  const win=()=>{ const a=st.from||todayISO(); return [a,st.until&&st.until>=a?st.until:a]; };
+  /* quantas unidades do item podem sair agora */
+  const free=it=>{
+    if(isRent()){ const [a,b]=win(); return itemAvail(it,a,b).free; }
+    return Math.max(0,totalQty(it)-rentedOn(it,todayISO()));
+  };
+  const why=it=>{
+    if(isRent()) return itemAvail(it,...win()).reason;
+    return rentedOn(it,todayISO())?'alugado no momento':'';
+  };
+  const fillContacts=()=>{
+    const opts2=S.contacts.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
+    if(st.contactId&&!S.contactsById.has(st.contactId)&&st.tmpC.has(st.contactId)) opts2.push(Object.assign({id:st.contactId},st.tmpC.get(st.contactId)));
+    $('#mv-contact',m.el).innerHTML='<option value="">— escolher contato —</option>'+opts2.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name+(c.company?' — '+c.company:''))+'</option>').join('');
+    $('#mv-contact',m.el).value=st.contactId;
+  };
+  const renderKind=()=>{
+    m.setTitle(isRent()?'Alugar equipamento':'Vender equipamento');
+    $$('[data-v="kind"]',m.el).forEach(b=>b.classList.toggle('on',b.dataset.kind===st.kind));
+    $$('.mv-rent',m.el).forEach(x=>x.classList.toggle('hide',!isRent())); $$('.mv-sale',m.el).forEach(x=>x.classList.toggle('hide',isRent()));
+    $('#mv-unit-l',m.el).textContent=isRent()?'Valor do aluguel por unidade (R$)':'Valor da venda por unidade (R$)';
+    $('[data-v="save"]',m.el).textContent=isRent()?'Registrar aluguel':'Registrar venda';
+    renderAll();
+  };
+  const renderTotal=()=>{
+    const units=Array.from(st.sel.values()).reduce((s,q)=>s+q,0), u=num(st.unit);
+    $('#mv-total',m.el).textContent=units?units+' unidade(s)'+(u?' × '+money(u)+' = '+money(u*units):''):'';
+  };
+  const renderSelInner=()=>{
+    const box=$('#mv-sel',m.el);
+    if(!st.sel.size){ box.innerHTML='<div class="empty">Nenhum equipamento escolhido.<br>Use a lista abaixo.</div>'; renderTotal(); return; }
+    box.innerHTML=Array.from(st.sel,([id,q])=>{
+      const it=S.itemsById.get(id); if(!it) return '';
+      const f=free(it), bad=q>f;
+      return '<div class="arow'+(bad?' bad':'')+'"><div style="min-width:0"><b>'+esc(it.name)+'</b><br><small class="dim">'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||groupKey(it))+'</small>'+(bad?'<br><small class="bad">⚠ '+(f?'só '+f+' disponível(is)':'indisponível'+(why(it)?' — '+why(it):''))+'</small>':'')+'</div>'+
+        '<div class="row">'+(it.mode==='qty'?'<input type="number" class="qty" min="1" max="'+Math.max(1,totalQty(it))+'" value="'+q+'" data-mq="'+esc(id)+'" aria-label="Quantidade">':'')+'<button type="button" class="btn sm danger" data-v="rm" data-id="'+esc(id)+'" aria-label="Remover">✕</button></div></div>';
+    }).join('');
+    renderTotal();
+  };
+  const renderSel=()=>{ if(st.rs) return; st.rs=true; try{ renderSelInner(); }finally{ st.rs=false; } };
+  const renderPick=()=>{
+    const box=$('#mv-pick',m.el), q=norm(st.q.trim());
+    let list=S.items.filter(it=>!st.sel.has(it.id)&&(st.tag==='all'||hasTag(it,st.tag))&&(!q||q.split(/\s+/).every(w=>itemSearchText(it).includes(w))));
+    const info=new Map(list.map(it=>[it.id,free(it)]));
+    list.sort((a,b)=>(info.get(b.id)>0)-(info.get(a.id)>0)||groupKey(a).localeCompare(groupKey(b),'pt')||a.name.localeCompare(b.name,'pt',{numeric:true}));
+    const shown=list.slice(0,60);
+    box.innerHTML=shown.length?shown.map(it=>{
+      const f=info.get(it.id), ok=f>0, isQ=it.mode==='qty';
+      return '<div class="arow"><div style="min-width:0"><b>'+esc(it.name)+'</b><br><small class="dim">'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||groupKey(it))+'</small><br>'+
+        (ok?'<small class="good">'+(isQ?f+' disponível(is)':'disponível')+'</small>':'<small class="bad">indisponível'+(why(it)?' — '+esc(why(it)):'')+'</small>')+'</div>'+
+        '<div class="row">'+(isQ&&ok?'<input type="number" class="qty" min="1" max="'+f+'" value="1" data-pq="'+esc(it.id)+'" aria-label="Quantidade">':'')+'<button type="button" class="btn sm" data-v="add" data-id="'+esc(it.id)+'"'+(ok?'':' disabled')+'>Adicionar</button></div></div>';
+    }).join('')+(list.length>60?'<div class="dim" style="padding:6px;font-size:12px">Mostrando 60 de '+list.length+'. Refine a busca.</div>':''):'<div class="empty" style="border:0">'+(S.items.length?'Nenhum item encontrado (ou todos já foram escolhidos).':'Cadastre itens primeiro.')+'</div>';
+  };
+  function renderAll(){ renderSel(); renderPick(); }
+  fillContacts(); $('#mv-from',m.el).value=st.from; $('#mv-date',m.el).value=st.date; renderKind();
+
+  m.body.addEventListener('input',e=>{
+    const t=e.target;
+    if(t.id==='mv-q'){ st.q=t.value; renderPick(); }
+    else if(t.id==='mv-unit'){ st.unit=t.value; renderTotal(); }
+    else if(t.id==='mv-note') st.note=t.value;
+  });
+  m.body.addEventListener('change',e=>{
+    const t=e.target;
+    if(t.id==='mv-contact') st.contactId=t.value;
+    else if(t.id==='mv-from'){ st.from=t.value; if(st.until&&st.until<st.from){ st.until=st.from; $('#mv-until',m.el).value=st.until; } renderAll(); }
+    else if(t.id==='mv-until'){ st.until=t.value; if(st.until&&st.from&&st.until<st.from){ toast('A devolução não pode ser antes do início','warn'); st.until=''; t.value=''; } renderAll(); }
+    else if(t.id==='mv-date') st.date=t.value;
+    else if(t.id==='mv-tag'){ st.tag=t.value; renderPick(); }
+    else if(t.dataset.mq){ const it=S.itemsById.get(t.dataset.mq); let q=Math.floor(num(t.value)); const mx=it?Math.max(1,it.mode==='qty'?free(it)||1:1):1; if(q<1)q=1; if(q>mx)q=mx; t.value=q; st.sel.set(t.dataset.mq,q); renderSel(); }
+  });
+  m.el.addEventListener('click',async e=>{
+    const b=e.target.closest('[data-v]'); if(!b) return; const a=b.dataset.v;
+    if(a==='kind'){ st.kind=b.dataset.kind; renderKind(); }
+    else if(a==='add'){
+      const it=S.itemsById.get(b.dataset.id); if(!it) return;
+      const qi=$('[data-pq="'+b.dataset.id+'"]',m.el); let q=qi?Math.floor(num(qi.value)):1; if(q<1) q=1; const f=free(it); if(q>f) q=f; if(q<1) return;
+      st.sel.set(it.id,q); renderAll();
+    }
+    else if(a==='rm'){ st.sel.delete(b.dataset.id); renderAll(); }
+    else if(a==='cnew'){ openContact(null,{onSaved:(cid,data)=>{ st.tmpC.set(cid,data); st.contactId=cid; fillContacts(); setTimeout(fillContacts,250); }}); }
+    else if(a==='save') save();
+  });
+  async function save(){
+    if(st.saving) return;
+    if(!st.contactId){ toast('Escolha o contato','warn'); $('#mv-contact',m.el).focus(); return; }
+    if(!st.sel.size){ toast('Escolha ao menos um equipamento','warn'); return; }
+    const rent=isRent(), date=rent?st.from:st.date;
+    if(!date){ toast(rent?'Informe a data de início':'Informe a data da venda','warn'); return; }
+    if(rent&&st.until&&st.until<st.from){ toast('A devolução não pode ser antes do início','warn'); return; }
+    for(const [id,q] of st.sel){ const it=S.itemsById.get(id); if(!it){ toast('Um item escolhido não existe mais','err'); return; } const f=free(it); if(q>f){ toast('“'+it.name+'”: '+(f?'só '+f+' disponível(is)':'indisponível'+(why(it)?' ('+why(it)+')':'')),'warn',4500); return; } }
+    if(!rent){
+      const t=todayISO(), inEv=Array.from(st.sel.keys()).filter(id=>S.events.some(ev=>ev.status!=='cancelado'&&ev.end>=t&&ev._m.has(id)));
+      if(inEv.length&&!await confirmBox(inEv.length+' item(ns) estão em eventos futuros. Vendê-los vai gerar conflito nesses eventos.\nRegistrar a venda mesmo assim?',{ok:'Registrar venda',title:'Itens em eventos'})) return;
+    }
+    st.saving=true; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=true);
+    try{
+      const now=Date.now(), u=num(st.unit); let units=0;
+      await runBatch(bt=>{
+        for(const [id,q] of st.sel){
+          const it=S.itemsById.get(id); units+=q;
+          const h={id:Math.random().toString(36).slice(2,10),kind:st.kind,contactId:st.contactId,qty:q,from:rent?st.from:'',until:rent?st.until:'',date:rent?'':st.date,price:u?+(u*q).toFixed(2):'',note:st.note.trim(),returnedOn:'',createdAt:now};
+          bt.update(db.collection(COL.items).doc(id),{holdings:clean((it.holdings||[]).concat([h])),updatedAt:now});
+        }
+      });
+      const cn=(S.contactsById.get(st.contactId)||st.tmpC.get(st.contactId)||{}).name||'o contato';
+      toast((rent?'Aluguel registrado: ':'Venda registrada: ')+units+' un. — '+cn,'ok',3500); m.close();
+    }catch(err){ handleWriteError(err); st.saving=false; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=false); }
+  }
+}
+
+/* =====================================================================
    INICIALIZAÇÃO: abas, dados em tempo real, eventos globais, links de QR
    ===================================================================== */
 S.day=todayISO();
 const unsubs=[];
-function stopData(){ while(unsubs.length){ try{unsubs.pop()();}catch(e){} } S.loaded={items:false,events:false}; }
+function stopData(){ while(unsubs.length){ try{unsubs.pop()();}catch(e){} } S.loaded={items:false,events:false,contacts:false}; }
 
 function renderActive(fromData){
   const t=S.tab;
   if(t==='geral') renderGeral();
   else if(t==='categorias') renderCategorias();
   else if(t==='eventos') renderEventos();
+  else if(t==='contatos') renderContatos();
   else if(t==='cadastrar'){ if(!fromData||!$('#view-cadastrar')._ctx) renderCadastrar(); }
+  if(S.cdetail&&S.cdetail.el.isConnected) renderContactView(S.cdetail);
   if(S.detail&&S.detail.el.isConnected){
     const f=$('#m-form',S.detail.el), d=$('#m-desc',S.detail.el), typing=f&&!f.classList.contains('hide')&&d&&d.value.trim()!=='';
     if(!typing) renderDetail(S.detail);
@@ -1499,7 +1966,14 @@ function startData(){
   unsubs.push(db.collection(COL.items).onSnapshot({includeMetadataChanges:true},snap=>{
     const first=!S.loaded.items; c.items=snap.metadata.fromCache; p.items=snap.metadata.hasPendingWrites;
     const changed=first||snap.docChanges().length>0;
-    if(changed){ S.items=snap.docs.map(d=>normItem(d.id,d.data())); S.itemsById=new Map(S.items.map(i=>[i.id,i])); S.loaded.items=true; ok(); }
+    if(changed){
+      const stamp=new Map(S.all.map(i=>[i.id,i.photosAt||0]));
+      S.all=snap.docs.map(d=>normItem(d.id,d.data()));
+      S.itemsById=new Map(S.all.map(i=>[i.id,i]));
+      S.items=S.all.filter(i=>totalQty(i)>0);      /* o que foi vendido sai do estoque */
+      S.all.forEach(i=>{ if(stamp.has(i.id)&&stamp.get(i.id)!==(i.photosAt||0)) S.photoCache.delete(i.id); });   /* fotos mudaram em outro aparelho */
+      S.loaded.items=true; ok();
+    }
     upd(); if(changed){ scheduleRender(); checkPending(); }
   },onErr));
   unsubs.push(db.collection(COL.events).onSnapshot({includeMetadataChanges:true},snap=>{
@@ -1508,6 +1982,10 @@ function startData(){
     if(changed){ S.events=snap.docs.map(d=>normEvent(d.id,d.data())); S.loaded.events=true; ok(); }
     upd(); if(changed){ scheduleRender(); checkPending(); }
   },onErr));
+  unsubs.push(db.collection(COL.contacts).onSnapshot(snap=>{
+    S.contacts=snap.docs.map(d=>normContact(d.id,d.data())); S.contactsById=new Map(S.contacts.map(c=>[c.id,c]));
+    S.loaded.contacts=true; S.contactsError=null; scheduleRender();
+  },e=>{ console.error(e); S.contactsError=(e&&e.code)||'erro'; if(S.contactsError==='permission-denied') showRulesHelp(); renderActive(true); }));
   unsubs.push(db.collection(COL.meta).doc('config').onSnapshot(s=>{ S.meta=s.exists?(s.data()||{}):{}; scheduleRender(); },()=>{}));
 }
 
@@ -1557,6 +2035,11 @@ document.addEventListener('click',async e=>{
     case 'c-view': S.ui.cview=S.ui.cview==='group'?'flat':'group'; savePrefs(); renderCategorias(); break;
     case 'c-labels': { const l=filteredItems().filter(i=>i.qrEnabled); openLabels(l); break; }
     case 'ev-filter': S.ui.evFilter=b.dataset.f; savePrefs(); renderEventos(); break;
+    case 'goto-rent': S.ui.ctag='__rent'; S.ui.q=''; setTab('categorias'); { const q=$('#c-q'); if(q) q.value=''; renderCategorias(); } break;
+    case 'open-contact': openContactView(id); break;
+    case 'new-contact': openContact(null); break;
+    case 'ct-role': S.ui.crole=b.dataset.role; renderContatos(); break;
+    case 'h-return': case 'h-extend': case 'h-del': holdingAction(a,b.dataset.item,b.dataset.hid); break;
     case 'settings': openSettings(); break;
     case 'rules': showRulesHelp(); break;
     case 'qr-copy': try{await loadQrLib();copyQr(id);}catch(x){toast(x.message,'err',4000);} break;
@@ -1577,6 +2060,7 @@ document.addEventListener('input',e=>{
   const t=e.target;
   if(t.id==='c-q'){ S.ui.q=t.value; renderCategorias(); }
   else if(t.id==='e-q'){ S.ui.evq=t.value; renderEventos(); }
+  else if(t.id==='ct-q'){ S.ui.cq=t.value; renderContatos(); }
   else if(t.dataset&&t.dataset.need!==undefined){
     const key=t.dataset.need, n=Math.max(0,Math.floor(num(t.value))); S.ui.need[key]=n;
     const a=S.ui.date, b=(S.ui.end&&S.ui.end>=a)?S.ui.end:a;
