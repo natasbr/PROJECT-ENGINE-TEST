@@ -602,14 +602,63 @@ function usableBase(it,d){
 }
 /* unidades que podem ser usadas no dia d (ignorando eventos) */
 const usableQty = (it,d)=>Math.max(0,usableBase(it,d)-rentedOn(it,d));
+/* verifica se o item está em evento em andamento ou encerrado sem ter recebido baixa */
+function itemEventHold(itemId){
+  const t=todayISO();
+  for(const ev of S.events){
+    if(ev.status==='cancelado') continue;
+    const q=ev._m.get(itemId);
+    if(!q) continue;
+    if(ev.start<=t){
+      const isReturned=!!(ev.check&&ev.check[itemId]&&ev.check[itemId].r);
+      if(!isReturned) return {ev,qty:q,isPast:ev.end<t};
+    }
+  }
+  return null;
+}
+
+/* situação real do item no momento (não mostra "disponível" se estiver alugado ou em evento) */
+function getItemLiveStatus(it){
+  if(it.status==='manutencao') return {state:'manutencao',label:'Em manutenção',detail:'Em manutenção',badgeCls:'st-manutencao'};
+  if(it.status==='danificado') return {state:'danificado',label:'Danificado',detail:'Danificado',badgeCls:'st-danificado'};
+  if(it.status==='perdido') return {state:'perdido',label:'Perdido',detail:'Perdido',badgeCls:'st-perdido'};
+  if(it.status==='baixado') return {state:'baixado',label:'Baixado',detail:'Baixado (descartado)',badgeCls:'st-baixado'};
+
+  const rents=activeRentals(it);
+  if(rents.length>0){
+    const cn=contactName(rents[0].contactId);
+    return {state:'alugado',label:'Alocado',detail:'Alugado para '+cn,badgeCls:'st-alugado'};
+  }
+
+  const evh=itemEventHold(it.id);
+  if(evh){
+    const en=evh.ev.name||'Evento';
+    const sub=evh.isPast?'Aguardando baixa: '+en:'Em evento: '+en;
+    return {state:'evento',label:'Alocado',detail:sub,isPast:evh.isPast,evId:evh.ev.id,badgeCls:evh.isPast?'st-manutencao':'st-alugado'};
+  }
+
+  return {state:'disponivel',label:'Disponível',detail:'Livre no estoque',badgeCls:'st-disponivel'};
+}
+
 /* quantas unidades do item estão reservadas em eventos no dia d.
-   ov = {exclude:eventId, extra:Map, range:[a,b]} simula um rascunho de evento */
+   no dia de hoje, eventos que já começaram ou encerraram mas não tiveram baixa contam como ocupados.
+   no calendário/futuro, conta conforme o agendamento planejado (start até end). */
 function reservedFor(itemId,d,ov){
   let sum=0;
+  const t=todayISO();
   for(const ev of S.events){
     if(ev.status==='cancelado') continue;
     if(ov && ov.exclude===ev.id) continue;
-    if(d>=ev.start && d<=ev.end) sum+=ev._m.get(itemId)||0;
+    const q=ev._m.get(itemId)||0;
+    if(!q) continue;
+    if(d===t){
+      if(ev.start<=t){
+        const isReturned=!!(ev.check&&ev.check[itemId]&&ev.check[itemId].r);
+        if(!isReturned) sum+=q;
+      }
+    } else {
+      if(d>=ev.start && d<=ev.end) sum+=q;
+    }
   }
   if(ov && ov.extra && d>=ov.range[0] && d<=ov.range[1]) sum+=ov.extra.get(itemId)||0;
   return sum;
@@ -743,7 +792,7 @@ const hasTag = (it,t)=>(it.tags||[]).some(x=>x.toLowerCase()===String(t).toLower
 function isVR(it){
   if(it.vr==='sim') return true; if(it.vr==='nao') return false;
   const t=norm([it.name,it.model,it.brand,(it.tags||[]).join(' ')].join(' '));
-  return /\b(vr|quest|headset|headsets|oculus|oculos)\b/.test(t)&&!/(controle|controlador|carregador|cabo|base|dock|bateria|case|capa|suporte|tripe|fonte|fone|strap|facial|lente|acessori|sensor|touch)/.test(t);
+  return /\b(vr|quest|headset|headsets|oculus|oculos|pico|vive|vision)\b/.test(t)&&!/(controle|controlador|carregador|cabo|base|dock|bateria|case|capa|suporte|tripe|fonte|fone|strap|facial|lente|acessori|sensor|touch|link|elite|headstrap|adaptador)/.test(t);
 }
 function scopeItems(scope){
   if(scope==='vr') return S.items.filter(isVR);
@@ -1094,90 +1143,153 @@ const needResult = (free,need)=>!need?'':need<=free?'<span class="good">✓ cabe
 function renderGeral(){
   const v=$('#view-geral');
   if(!ready()){v.innerHTML=skeleton();return;}
-  if(!S.items.length){
-    v.innerHTML='<div class="card glow"><div class="empty"><b>Nenhum item no estoque ainda</b>Cadastre o primeiro equipamento para ver a disponibilidade aqui.<br><br><button class="btn pri" data-act="new-item">+ Cadastrar item</button></div></div>';
+  
+  // Buscar no inventário APENAS os headsets cadastrados (soma tudo como headsets, sem repetir por modelo)
+  const vrHeadsets = S.items.filter(isVR);
+  const totalVR = vrHeadsets.reduce((sum, it) => sum + totalQty(it), 0);
+
+  if(!totalVR && !S.items.length){
+    v.innerHTML='<div class="card glow"><div class="empty"><b>Nenhum headset no estoque ainda</b>Cadastre o primeiro equipamento para ver a disponibilidade aqui.<br><br><button class="btn pri" data-act="new-item">+ Cadastrar item</button></div></div>';
     return;
   }
-  let scope=resolveScope(); const opts=scopeOptions();
-  if(!scopeItems(scope).length && scope!=='all') scope='all';
-  const items=scopeItems(scope);
-  const a=S.ui.date, b=(S.ui.end&&S.ui.end>=a)?S.ui.end:a;
-  const st=rangeStats(items,a,b);
+
   const t=todayISO();
-  const dateLbl=a===b?(a===t?'hoje':fmtDate(a)):fmtRange(a,b);
-  const evs=evsOn(a,b);
+  const a=S.ui.date || t;
+  const b=(S.ui.end && S.ui.end>=a) ? S.ui.end : a;
+  const isToday = (a === t && b === t);
+  const dateLbl = a===b ? (a===t ? 'hoje' : fmtDate(a)) : fmtRange(a,b);
 
-  /* alertas */
+  // Estatísticas no momento vs data futura:
+  let freeVR = 0, inEventsVR = 0, inRentVR = 0, inMaintVR = 0;
+  if(isToday){
+    for(const it of vrHeadsets){
+      const tot = totalQty(it);
+      if(it.status !== 'disponivel'){
+        inMaintVR += tot;
+      } else if(activeRentals(it).length > 0){
+        inRentVR += Math.min(tot, rentedOn(it, t));
+      } else if(itemEventHold(it.id)){
+        inEventsVR += tot;
+      } else {
+        freeVR += tot;
+      }
+    }
+  } else {
+    const st = rangeStats(vrHeadsets, a, b);
+    freeVR = st.F;
+    inEventsVR = st.R;
+    inRentVR = st.L;
+    inMaintVR = st.U;
+  }
+
+  /* Alertas */
   let alerts='';
+  // 1. Eventos encerrados com baixa pendente (com botão de ação rápida de dar baixa!)
+  const unreturnedEvs = S.events.filter(ev => {
+    if(ev.status==='cancelado' || ev.end>=t) return false;
+    return (ev.alloc||[]).some(a => {
+      const it = S.itemsById.get(a.itemId);
+      return it && isVR(it) && !(ev.check && ev.check[a.itemId] && ev.check[a.itemId].r);
+    });
+  });
+  unreturnedEvs.forEach(ev => {
+    const unreturnedCount = (ev.alloc||[]).filter(a => {
+      const it = S.itemsById.get(a.itemId);
+      return it && isVR(it) && !(ev.check && ev.check[a.itemId] && ev.check[a.itemId].r);
+    }).reduce((acc, a) => acc + num(a.qty), 0);
+    alerts += '<div class="alert red" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>↩ <b>'+esc(ev.name)+'</b> encerrou e tem '+unreturnedCount+' headset(s) aguardando baixa</span><div class="row"><button class="btn sm pri" data-act="dar-baixa" data-id="'+esc(ev.id)+'">✓ Dar baixa e liberar</button><button class="btn sm" data-act="open-event" data-id="'+esc(ev.id)+'">Ver checklist</button></div></div>';
+  });
+
+  // 2. Conflitos de eventos
   const conf=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').map(ev=>({ev,c:eventConflicts(ev)})).filter(x=>x.c.length);
-  conf.slice(0,4).forEach(x=>{alerts+='<button class="alert red" data-act="open-event" data-id="'+esc(x.ev.id)+'">⚠ Conflito no evento “'+esc(x.ev.name)+'”: '+x.c.length+' item(ns) indisponível(is) ou reservado(s) em duplicidade</button>';});
-  const late=holdRecords('alugado').filter(x=>isOverdue(x.h));
-  if(late.length) alerts+='<button class="alert red" data-act="goto-rent">⚠ '+late.length+' devolução(ões) atrasada(s): '+esc(Array.from(new Set(late.map(x=>contactName(x.h.contactId)))).slice(0,3).join(', '))+'</button>';
-  const off=S.items.filter(it=>it.status==='manutencao'||it.status==='danificado').length;
-  if(off) alerts+='<button class="alert" data-act="goto-off">'+off+' item(ns) fora de uso (manutenção ou danificado) — ver lista</button>';
+  conf.slice(0,3).forEach(x=>{alerts+='<button class="alert red" data-act="open-event" data-id="'+esc(x.ev.id)+'">⚠ Conflito no evento “'+esc(x.ev.name)+'”: '+x.c.length+' headset(s) indisponível(is) ou reservado(s) em duplicidade</button>';});
 
-  const pend=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado'&&planStats(ev).open>0).sort((x,y)=>x.start.localeCompare(y.start));
-  if(pend.length) alerts+='<button class="alert" data-act="open-event" data-id="'+esc(pend[0].id)+'">▤ '+pend.length+' evento(s) com itens planejados ainda sem separar. Próximo: “'+esc(pend[0].name)+'” ('+fmtShort(pend[0].start)+')</button>';
-  S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').map(ev=>({ev,p:planIssues(ev)})).filter(x=>x.p.length).slice(0,3).forEach(x=>{ alerts+='<button class="alert red" data-act="open-event" data-id="'+esc(x.ev.id)+'">⚠ “'+esc(x.ev.name)+'” precisa de mais do que há: '+esc(x.p.map(issTxt).join(', '))+'</button>'; });
-  const nr=S.events.filter(ev=>ev.end<t&&ev.status!=='cancelado'&&ev.check&&Object.keys(ev.check).length&&ckStats(ev).r<ckStats(ev).n);
-  if(nr.length) alerts+='<button class="alert" data-act="open-event" data-id="'+esc(nr[0].id)+'">↩ '+nr.length+' evento(s) encerrado(s) com devolução pendente no checklist: “'+esc(nr[0].name)+'”</button>';
-  /* grupos por modelo */
-  const groups=groupsOf(items).map(g=>({g,s:rangeStats(g.items,a,b)}));
-  const grpHTML=groups.map(({g,s})=>{
-    const need=num(S.ui.need[g.key]);
-    return '<div class="grp" data-group="'+esc(g.key)+'"><div class="grp-top"><b>'+esc(g.key)+'</b><span><b class="'+(s.F===0?'bad':'good')+'">'+s.F+'</b>/'+s.T+' livres</span></div>'+
-      '<div class="bar" aria-label="'+s.F+' livres de '+s.T+'">'+asciiBar(s.F,s.R,s.U+s.L,s.T,20)+'</div>'+
-      '<div class="grp-sub"><span>em eventos '+s.R+' · fora de uso '+s.U+(s.L?' · alugados '+s.L:'')+'</span><label class="need">Preciso <input type="number" min="0" step="1" inputmode="numeric" data-need="'+esc(g.key)+'" value="'+(need||'')+'" aria-label="Quantidade necessária de '+esc(g.key)+'"><span class="need-res">'+needResult(s.F,need)+'</span></label></div></div>';
-  }).join('');
+  // 3. Devoluções atrasadas de aluguel
+  const late=holdRecords('alugado').filter(x=>isOverdue(x.h) && isVR(x.it));
+  if(late.length) alerts+='<button class="alert red" data-act="goto-rent">⚠ '+late.length+' devolução(ões) de headset atrasada(s): '+esc(Array.from(new Set(late.map(x=>contactName(x.h.contactId)))).slice(0,3).join(', '))+'</button>';
 
-  /* calendário */
+  // 4. Manutenção de headsets
+  const offVR = vrHeadsets.filter(it=>it.status==='manutencao'||it.status==='danificado').length;
+  if(offVR) alerts+='<button class="alert" data-act="goto-off">'+offVR+' headset(s) em manutenção ou danificado(s)</button>';
+
+  /* Calendário de disponibilidade (apenas headsets VR) */
   const [cy,cm]=S.ui.month.split('-').map(Number);
   const first=new Date(cy,cm-1,1,12), start=new Date(first); start.setDate(1-first.getDay());
   let cells='';
   for(let i=0;i<42;i++){
     const d=new Date(start); d.setDate(start.getDate()+i); const ds=iso(d);
-    const s=dayStats(items,ds), n=S.events.filter(ev=>ev.status!=='cancelado'&&ds>=ev.start&&ds<=ev.end).length;
-    const cls=!s.T?'f-na':s.F===0?'f-zero':s.F/s.T<=0.25?'f-low':'f-ok';
-    cells+='<button class="cday'+(d.getMonth()!==cm-1?' out':'')+(ds===t?' today':'')+(ds>=a&&ds<=b?' inr':'')+(ds===a?' sel':'')+'" data-act="pick-day" data-date="'+ds+'" aria-label="'+fmtDate(ds)+': '+s.F+' livres, '+n+' evento(s)"><span class="dn">'+d.getDate()+'</span><span class="fv '+cls+'">'+(s.T?s.F:'·')+'</span><span class="ev">'+(n?'▪'.repeat(Math.min(n,4))+(n>4?'+':''):'')+'</span></button>';
+    let sF = 0;
+    if(ds === t){
+      sF = freeVR;
+    } else {
+      const s = dayStats(vrHeadsets, ds);
+      sF = s.F;
+    }
+    const n=S.events.filter(ev=>ev.status!=='cancelado'&&ds>=ev.start&&ds<=ev.end).length;
+    const cls=!totalVR?'f-na':sF===0?'f-zero':sF/totalVR<=0.25?'f-low':'f-ok';
+    cells+='<button class="cday'+(d.getMonth()!==cm-1?' out':'')+(ds===t?' today':'')+(ds>=a&&ds<=b?' inr':'')+(ds===a?' sel':'')+'" data-act="pick-day" data-date="'+ds+'" aria-label="'+fmtDate(ds)+': '+sF+' livres, '+n+' evento(s)"><span class="dn">'+d.getDate()+'</span><span class="fv '+cls+'">'+(totalVR?sF:'·')+'</span><span class="ev">'+(n?'▪'.repeat(Math.min(n,4))+(n>4?'+':''):'')+'</span></button>';
   }
 
-  /* com terceiros (alugados agora) */
-  const rentBy=new Map(); holdRecords('alugado').forEach(x=>{const k=x.h.contactId||'?'; if(!rentBy.has(k)) rentBy.set(k,[]); rentBy.get(k).push(x);});
-  const rentCard=rentBy.size?'<div class="card"><div class="h2"><span class="t">Com terceiros</span><small class="dim">alugados agora</small></div>'+Array.from(rentBy,([cid,list])=>{
-    const gm=new Map(); list.forEach(({it,h})=>gm.set(groupKey(it),(gm.get(groupKey(it))||0)+holdQty(h)));
-    const late=list.some(x=>isOverdue(x.h)), untils=list.map(x=>x.h.until).filter(Boolean).sort();
-    return '<button class="erow" style="grid-template-columns:1fr auto" data-act="open-contact" data-id="'+esc(cid)+'"><span class="emain"><b>'+esc(contactName(cid))+'</b><small>'+esc(Array.from(gm,([k,n])=>n+'× '+k).join(' · '))+'</small></span><span class="emeta">'+(late?'<span class="bad">⚠ atrasado</span>':'')+'<span class="dim">'+(untils.length?'até '+fmtShort(untils[untils.length-1]):'sem prazo')+'</span></span></button>';
+  /* Headsets com terceiros (alugados no momento) */
+  const rentBy=new Map();
+  holdRecords('alugado').filter(x=>isVR(x.it)).forEach(x=>{
+    const k=x.h.contactId||'?';
+    if(!rentBy.has(k)) rentBy.set(k,[]);
+    rentBy.get(k).push(x);
+  });
+  const rentCard=rentBy.size?'<div class="card"><div class="h2"><span class="t">Headsets alugados</span><small class="dim">com terceiros agora</small></div>'+Array.from(rentBy,([cid,list])=>{
+    const totalRented = list.reduce((s, {h})=>s+holdQty(h), 0);
+    const lateAny = list.some(x=>isOverdue(x.h)), untils=list.map(x=>x.h.until).filter(Boolean).sort();
+    return '<button class="erow" style="grid-template-columns:1fr auto" data-act="open-contact" data-id="'+esc(cid)+'"><span class="emain"><b>'+esc(contactName(cid))+'</b><small>'+totalRented+' headset(s) alugado(s)</small></span><span class="emeta">'+(lateAny?'<span class="bad">⚠ atrasado</span>':'')+'<span class="dim">'+(untils.length?'até '+fmtShort(untils[untils.length-1]):'sem prazo')+'</span></span></button>';
   }).join('')+'</div>':'';
 
-  /* próximos eventos */
+  /* Próximos eventos */
   const up=S.events.filter(ev=>ev.end>=t&&ev.status!=='cancelado').sort((x,y)=>x.start.localeCompare(y.start)||(x.startTime||'99').localeCompare(y.startTime||'99')||x.name.localeCompare(y.name)).slice(0,8);
-  const upHTML=up.length?up.map(evRowHTML).join(''):'<div class="empty"><b>Nenhum evento à vista</b>Crie um na aba Eventos.</div>';
-
-  const vrStrip=scope==='vr'?'<div class="card glow vrstrip"><div class="row sb" style="gap:14px"><div><div class="lbl">VRs META QUEST LIVRES · '+esc(dateLbl).toUpperCase()+'</div><div class="vrbig">'+st.F+'<small> de '+st.T+'</small></div></div><div class="vrbar bar" aria-hidden="true">'+asciiBar(st.F,st.R,st.U+st.L,st.T,20)+'</div></div></div>':'';
+  const upHTML=up.length?up.map(evRowHTML).join(''):'<div class="empty"><b>Nenhum evento à vista</b>Crie um abaixo para agendar.</div>';
   const evCard='<div class="card glow"><div class="h2"><span class="t">Próximos eventos</span><span class="row"><button class="btn sm pri" data-act="new-event" data-date="'+a+'">+ Novo evento</button><button class="btn sm" data-act="goto" data-tab="eventos">Ver todos</button></span></div>'+upHTML+'</div>';
-  v.innerHTML=(alerts?'<div style="margin-bottom:14px">'+alerts+'</div>':'')+
-  vrStrip+'<div class="grid2"><div class="stack">'+evCard+
-    '<div class="card"><div class="h2"><span class="t">'+(scope==='vr'?'VRs livres':'Outros equipamentos')+'</span>'+(scope!=='vr'&&S.items.some(isVR)?'<button class="btn sm pri" data-act="g-vr">← Só VRs</button>':'')+'</div>'+
-      '<div class="fgrid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">'+
-      '<div class="field"><label for="g-scope">Mostrar</label><select id="g-scope">'+opts+'</select></div>'+
-      '<div class="field"><label for="g-date">Data</label><input type="date" id="g-date" value="'+a+'"></div>'+
-      '<div class="field"><label for="g-end">Até (opcional)</label><input type="date" id="g-end" value="'+(S.ui.end&&S.ui.end>=a?S.ui.end:'')+'" min="'+a+'"></div></div>'+
-      '<div class="row" style="margin-top:8px"><button class="btn sm" data-act="g-today">Hoje</button>'+(a!==b?'<button class="btn sm ghost" data-act="g-clear-end">Só um dia</button>':'')+'<button class="btn sm blue" data-act="new-event" data-date="'+a+'">+ Evento nesta data</button></div>'+
-      '<div style="margin-top:14px"><div class="hero-num">'+st.F+' <small>livres de '+st.T+' · '+esc(dateLbl)+'</small></div>'+
-      '<div class="hero-bar bar" aria-hidden="true">'+asciiBar(st.F,st.R,st.U+st.L,st.T,24)+'</div>'+LEGEND+
-      '<div class="trio"><div><b>'+st.R+'</b><span>em eventos</span></div><div><b>'+st.L+'</b><span>alugados</span></div><div><b>'+st.U+'</b><span>fora de uso</span></div></div>'+
-      (a!==b?'<div class="dim" style="font-size:12px;margin-top:6px">Período: considera o dia com menos itens livres.</div>':'')+'</div>'+
-      (evs.length?'<div class="h3">Eventos '+(a===b?'nesta data':'neste período')+'</div><div class="chips">'+evs.map(ev=>'<button class="chip x" data-act="open-event" data-id="'+esc(ev.id)+'">'+esc(ev.name)+' <span class="n">'+fmtShort(ev.start)+(ev.end!==ev.start?'–'+fmtShort(ev.end):'')+'</span></button>').join('')+'</div>':'')+
+
+  /* Hero Banner principal com total de Quests livres */
+  const heroCard = '<div class="card glow vrstrip">'+
+    '<div class="row sb" style="gap:14px">'+
+      '<div>'+
+        '<div class="lbl" style="font-weight:bold;letter-spacing:1px">HEADSETS VR LIVRES · '+esc(dateLbl).toUpperCase()+'</div>'+
+        '<div class="vrbig" style="color:var(--ok)">'+freeVR+'<small style="font-size:0.35em;color:var(--g-dim)"> livres de '+totalVR+' headsets</small></div>'+
+      '</div>'+
+      '<div class="vrbar bar" aria-hidden="true">'+asciiBar(freeVR, inEventsVR, inRentVR + inMaintVR, totalVR, 24)+'</div>'+
     '</div>'+
-    rentCard+
-    '<div class="card"><div class="h2"><span class="t">Por modelo</span><small class="dim">Digite “Preciso” para conferir se cabe</small></div>'+(grpHTML||'<div class="empty">Nada nesta categoria.</div>')+'</div>'+
-  '</div><div class="stack">'+
-    '<div class="card"><div class="h2"><span class="t">Calendário</span><small class="dim">'+(scope==='vr'?'VRs livres por dia':'livres por dia')+' · ▪ eventos</small></div>'+
-      '<div class="cal-head"><button class="btn sm" data-act="cal-prev" aria-label="Mês anterior">‹</button><b>'+MONTHS[cm-1]+' '+cy+'</b><button class="btn sm" data-act="cal-next" aria-label="Próximo mês">›</button></div>'+
-      '<div class="cal">'+['D','S','T','Q','Q','S','S'].map(x=>'<div class="dow">'+x+'</div>').join('')+cells+'</div></div>'+
-    ''+
-  '</div></div>';
-  const sel=$('#g-scope',v); sel.value=scope; if(sel.value!==scope) sel.value='all';
+    '<div class="trio" style="margin-top:10px">'+
+      '<div><b>'+freeVR+'</b><span>livres para evento</span></div>'+
+      '<div><b>'+inEventsVR+'</b><span>em eventos</span></div>'+
+      '<div><b>'+inRentVR+'</b><span>alugados</span></div>'+
+      '<div><b>'+inMaintVR+'</b><span>manutenção</span></div>'+
+      '<div><b>'+totalVR+'</b><span>total no estoque</span></div>'+
+    '</div>'+
+    '<div class="row" style="margin-top:14px;padding-top:10px;border-top:1px dashed var(--g-faint)">'+
+      '<div class="field" style="width:auto;min-width:140px"><label for="g-date" style="font-size:11px">Consultar data</label><input type="date" id="g-date" value="'+a+'" style="min-height:34px;padding:4px 8px;font-size:14px"></div>'+
+      '<div class="field" style="width:auto;min-width:140px"><label for="g-end" style="font-size:11px">Até (período)</label><input type="date" id="g-end" value="'+(S.ui.end&&S.ui.end>=a?S.ui.end:'')+'" min="'+a+'" style="min-height:34px;padding:4px 8px;font-size:14px"></div>'+
+      '<button class="btn sm" data-act="g-today" style="margin-top:auto">Hoje / No momento</button>'+
+      (a!==b?'<button class="btn sm ghost" data-act="g-clear-end" style="margin-top:auto">Limpar período</button>':'')+
+      '<button class="btn sm blue" data-act="new-event" data-date="'+a+'" style="margin-top:auto">+ Evento nesta data</button>'+
+    '</div>'+
+  '</div>';
+
+  /* Montagem da tela Geral simplificada */
+  v.innerHTML = (alerts ? '<div style="margin-bottom:14px">'+alerts+'</div>' : '') +
+    heroCard +
+    '<div class="grid2" style="margin-top:14px">' +
+      '<div class="stack">' +
+        evCard +
+        rentCard +
+      '</div>' +
+      '<div class="stack">' +
+        '<div class="card">' +
+          '<div class="h2"><span class="t">Calendário de Disponibilidade</span><small class="dim">Headsets VR livres por dia · ▪ eventos</small></div>' +
+          '<div class="cal-head"><button class="btn sm" data-act="cal-prev" aria-label="Mês anterior">‹</button><b>'+MONTHS[cm-1]+' '+cy+'</b><button class="btn sm" data-act="cal-next" aria-label="Próximo mês">›</button></div>' +
+          '<div class="cal">'+['D','S','T','Q','Q','S','S'].map(x=>'<div class="dow">'+x+'</div>').join('')+cells+'</div>' +
+          '<div class="dim" style="font-size:11px;margin-top:10px;text-align:center">Toque em qualquer dia para consultar a disponibilidade ou criar evento naquela data.</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>';
 }
 function evRowHTML(ev){
   const ph=evPhase(ev), conf=eventConflicts(ev).length, t=todayISO();
@@ -1214,14 +1326,33 @@ function filteredItems(){
   return list.sort(cmp);
 }
 function itemRowHTML(it){
-  const s=dayStats([it],todayISO()), rents=activeRentals(it);
-  let av;
-  if(it.mode==='qty') av='<span class="'+(s.F===0?'bad':'good')+'">'+s.F+'/'+s.T+' livres</span>'+(s.L?'<span class="warn">'+s.L+' alugada(s)</span>':'');
-  else av=s.L?'<span class="warn">alugado: '+esc(contactName(rents[0].contactId))+'</span>':s.U?'<span class="warn">indisponível</span>':s.R?'<span class="dim">em evento hoje</span>':'<span class="good">livre</span>';
+  const live = getItemLiveStatus(it);
+  let statusBadgeHtml = '';
+  let avHtml = '';
+
+  if(live.state === 'alugado'){
+    statusBadgeHtml = '<span class="badge st-alugado">Alocado</span>';
+    avHtml = '<span class="warn">'+esc(live.detail)+'</span>';
+  } else if(live.state === 'evento'){
+    statusBadgeHtml = '<span class="badge '+(live.isPast?'st-manutencao':'st-alugado')+'">Alocado</span>';
+    avHtml = '<span class="'+(live.isPast?'warn':'dim')+'">'+esc(live.detail)+'</span>';
+  } else if(live.state !== 'disponivel'){
+    statusBadgeHtml = statusBadge(it.status);
+    avHtml = '<span class="warn">'+esc(live.label)+'</span>';
+  } else {
+    statusBadgeHtml = '<span class="badge st-disponivel">Disponível</span>';
+    if(it.mode === 'qty'){
+      const s = dayStats([it], todayISO());
+      avHtml = '<span class="'+(s.F===0?'bad':'good')+'">'+s.F+'/'+s.T+' livres</span>';
+    } else {
+      avHtml = '<span class="good">livre</span>';
+    }
+  }
+
   return '<button class="irow" data-act="open-item" data-id="'+esc(it.id)+'"><span class="thumb">'+(it.thumb?'<img alt="" src="'+esc(it.thumb)+'">':'▢')+'</span>'+
     '<span class="imain"><b>'+esc(it.name)+'</b><small>'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||(it.mode==='qty'?'Lote de '+totalQty(it):'—'))+'</small>'+
     ((it.tags||[]).length?'<span class="tagline">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</span>':'')+'</span>'+
-    '<span class="imeta">'+statusBadge(it.status)+condHTML(it.condition)+av+'</span></button>';
+    '<span class="imeta">'+statusBadgeHtml+condHTML(it.condition)+avHtml+'</span></button>';
 }
 function ensureCatsShell(){
   if(catsShell) return;
@@ -1329,15 +1460,27 @@ function renderDetail(m){
   const top=m.body.scrollTop;
   m.setTitle(it.name);
   const s=dayStats([it],todayISO());
-  const rents=activeRentals(it), soldAll=totalQty(it)===0&&soldQty(it)>0;
-  const avail=soldAll?'fora do estoque':it.mode==='qty'?s.F+' de '+s.T+' livres hoje'+(s.L?' · '+s.L+' alugada(s)':''):(s.L?'alugado hoje':s.U?'indisponível hoje':s.R?'em evento hoje':'livre hoje');
+  const live=getItemLiveStatus(it);
+  let detailBadge='';
+  if(soldAll){
+    detailBadge='<span class="badge st-vendido">Vendido</span>';
+  } else if(live.state==='alugado'){
+    detailBadge='<span class="badge st-alugado">Alocado</span><span class="tag">'+esc(live.detail)+'</span>';
+  } else if(live.state==='evento'){
+    detailBadge='<span class="badge '+(live.isPast?'st-manutencao':'st-alugado')+'">Alocado</span><span class="tag">'+esc(live.detail)+'</span>';
+  } else if(live.state!=='disponivel'){
+    detailBadge=statusBadge(it.status);
+  } else {
+    detailBadge='<span class="badge st-disponivel">Disponível</span>';
+  }
+  const avail=soldAll?'fora do estoque':live.state==='alugado'?'alugado hoje':live.state==='evento'?(live.isPast?'em evento (aguarda baixa)':'em evento hoje'):it.mode==='qty'?s.F+' de '+s.T+' livres hoje'+(s.L?' · '+s.L+' alugada(s)':''):(s.U?'indisponível hoje':'livre hoje');
   const fields=ITEM_FIELDS.filter(f=>!['name','status','condition','notes'].includes(f.key)&&(!f.showIf||f.showIf(it))&&String(it[f.key]==null?'':it[f.key]).trim()!==''&&!(f.type==='number'&&f.key==='unavailQty'&&!num(it[f.key])));
   const kv=fields.map(f=>'<div><span>'+esc(f.label)+'</span><b>'+fieldValueHTML(f,it[f.key])+'</b></div>').join('')+(it.custom||[]).filter(c=>c.k).map(c=>'<div><span>'+esc(c.k)+'</span><b>'+esc(c.v)+'</b></div>').join('');
   const maint=(it.maintenance||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const uses=S.events.filter(ev=>ev._m.has(it.id)).sort((a,b)=>b.start.localeCompare(a.start));
   const maintCost=maint.reduce((t,x)=>t+num(x.cost),0);
   m.body.innerHTML=
-   '<div class="row" style="margin-bottom:10px">'+(soldAll?'<span class="badge st-vendido">Vendido</span>':statusBadge(it.status))+(rents.length?'<span class="badge st-alugado">Alugado: '+esc(rents.map(h=>contactName(h.contactId)).filter((v,i,a)=>a.indexOf(v)===i).join(', '))+'</span>':'')+condHTML(it.condition)+'<span class="'+(s.F===0&&!soldAll?'bad':'good')+'">'+esc(avail)+'</span></div>'+
+   '<div class="row" style="margin-bottom:10px">'+detailBadge+condHTML(it.condition)+'<span class="'+(s.F===0&&!soldAll?'bad':'good')+'">'+esc(avail)+'</span></div>'+
    ((it.tags||[]).length?'<div class="tagline" style="margin-bottom:10px">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</div>':'')+
    '<div id="d-photos" class="dim" style="margin-bottom:12px">'+(it.photoCount?'Carregando fotos…':'')+'</div>'+
    (kv||soldQty(it)?'<div class="kv">'+kv+(soldQty(it)&&it.mode==='qty'?'<div><span>Em estoque</span><b>'+totalQty(it)+' (vendidos: '+soldQty(it)+')</b></div>':'')+'</div>':'')+
@@ -1762,7 +1905,7 @@ function openEvent(id,presetDate){
     const box=$('#ev-ck',m.el), rows=draft.alloc.map(a=>({a,it:S.itemsById.get(a.itemId)})), on=(id,k)=>!!(draft.check[id]&&draft.check[id][k]);
     const head='<div class="h3" style="margin-top:0">Checklist da equipe</div>';
     if(!rows.length){ box.innerHTML=head+'<div class="dim" style="font-size:13px">Separe itens do inventário para montar o checklist.</div>'; return; }
-    box.innerHTML=head+'<div class="chips" style="margin-bottom:8px"><span class="lbl" style="align-self:center">Marcar todos:</span>'+CK.map(([k,n])=>'<button type="button" class="chip'+(rows.every(r=>on(r.a.itemId,k))?' on':'')+'" data-e="ckall" data-k="'+k+'">'+n+'</button>').join('')+'</div>'+
+    box.innerHTML=head+'<div class="chips" style="margin-bottom:8px"><span class="lbl" style="align-self:center">Marcar todos:</span>'+CK.map(([k,n])=>'<button type="button" class="chip'+(rows.every(r=>on(r.a.itemId,k))?' on':'')+'" data-e="ckall" data-k="'+k+'">'+n+'</button>').join('')+'<button type="button" class="btn sm pri" data-e="baixa-all" style="margin-left:auto">✓ Devolver tudo (Dar baixa)</button></div>'+
       rows.map(({a,it})=>'<div class="arow" style="grid-template-columns:1fr"><div style="min-width:0"><b>'+esc(it?it.name:'(item removido)')+(num(a.qty)>1?' × '+num(a.qty):'')+'</b><div class="chips" style="margin-top:4px">'+CK.map(([k,n])=>'<button type="button" class="chip'+(on(a.itemId,k)?' on':'')+'" data-e="ck" data-id="'+esc(a.itemId)+'" data-k="'+k+'">'+n+'</button>').join('')+'<button type="button" class="chip" style="border-color:var(--red);'+(on(a.itemId,'d')?'background:var(--red);color:#000':'color:var(--red)')+'" data-e="ck" data-id="'+esc(a.itemId)+'" data-k="d">⚠ Defeito</button></div></div></div>').join('');
   };
   const renderAll=()=>{ renderPlan(); renderSum(); renderQuick(); renderPick(); };
@@ -1796,6 +1939,7 @@ function openEvent(id,presetDate){
     else if(a==='kadd'){ const k=(S.kits||[]).find(x=>x.id===$('#pl-kit',m.el).value); if(!k) return; k.lines.forEach(l=>draft.plan.push({id:Math.random().toString(36).slice(2,9),label:l.label,qty:l.qty,done:false,kit:k.name})); ctx.dirty=true; renderPlan(); toast('Kit “'+k.name+'” adicionado ao planejamento'); }
     else if(a==='ck'){ const c=draft.check[b.dataset.id]=draft.check[b.dataset.id]||{}, k=b.dataset.k; if(c[k]) delete c[k]; else c[k]=k==='d'?1:Date.now(); ctx.dirty=true; renderCk(); }
     else if(a==='ckall'){ const k=b.dataset.k, all=draft.alloc.every(x=>draft.check[x.itemId]&&draft.check[x.itemId][k]); draft.alloc.forEach(x=>{ const c=draft.check[x.itemId]=draft.check[x.itemId]||{}; if(all) delete c[k]; else if(!c[k]) c[k]=Date.now(); }); ctx.dirty=true; renderCk(); }
+    else if(a==='baixa-all'){ const now=Date.now(); draft.alloc.forEach(x=>{ const c=draft.check[x.itemId]=draft.check[x.itemId]||{}; c.r=now; }); ctx.dirty=true; renderCk(); toast('Baixa registrada para todos os itens!'); }
     else if(a==='padd'){
       const n=$('#pl-n',m.el), q=Math.max(1,Math.floor(num($('#pl-q',m.el).value))), label=n.value.trim();
       if(!label){ toast('Digite o que vai precisar','warn'); n.focus(); return; }
@@ -2280,11 +2424,29 @@ function readHash(){
   checkPending();
 }
 
+async function darBaixaEvento(evId){
+  const ev=S.events.find(e=>e.id===evId);
+  if(!ev) return;
+  const now=Date.now();
+  const ck=clone(ev.check||{});
+  (ev.alloc||[]).forEach(a=>{
+    ck[a.itemId]=ck[a.itemId]||{};
+    if(!ck[a.itemId].r) ck[a.itemId].r=now;
+  });
+  try{
+    await runBatch(b=>b.update(db.collection(COL.events).doc(evId),{check:clean(ck),updatedAt:now}));
+    toast('Baixa realizada! Headsets liberados no estoque.');
+  }catch(e){
+    handleWriteError(e);
+  }
+}
+
 /* ---------- cliques globais ---------- */
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-act]'); if(!b) return;
   const a=b.dataset.act, id=b.dataset.id;
   switch(a){
+    case 'dar-baixa': darBaixaEvento(id); break;
     case 'goto': setTab(b.dataset.tab); break;
     case 'new-item': openItemCreate(); break;
     case 'kits': openKits(); break;
