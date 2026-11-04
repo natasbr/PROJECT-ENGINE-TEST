@@ -583,11 +583,13 @@ const totalQty = it=>Math.max(0,baseQty(it)-soldQty(it));
 const downQty = it=>it.mode==='qty'?Math.min(totalQty(it),Math.max(0,Math.floor(num(it.unavailQty)))):0;
 const groupKey = it=>((it.model||'').trim()||(it.name||'').trim()||'Sem nome');
 const activeRentals = it=>(it.holdings||[]).filter(h=>h.kind==='alugado'&&!h.returnedOn);
-const isOverdue = h=>h.kind==='alugado'&&!h.returnedOn&&!!h.until&&h.until<todayISO();
-/* unidades alugadas fora no dia d. Sem data de devolução, ou atrasado: continua fora até dar baixa. */
+const activeFieldHolds = it=>(it.holdings||[]).filter(h=>(h.kind==='em_campo'||h.kind==='campo')&&!h.returnedOn);
+const activeExternalHolds = it=>(it.holdings||[]).filter(h=>(h.kind==='alugado'||h.kind==='em_campo'||h.kind==='campo')&&!h.returnedOn);
+const isOverdue = h=>(h.kind==='alugado'||h.kind==='em_campo'||h.kind==='campo')&&!h.returnedOn&&!!h.until&&h.until<todayISO();
+/* unidades fora (alugadas ou em campo com colaborador) no dia d. Sem data de devolução, ou atrasado: continua fora até dar baixa. */
 function rentedOn(it,d){
   let s=0; const t=todayISO();
-  for(const h of activeRentals(it)){
+  for(const h of activeExternalHolds(it)){
     const end=(h.until&&h.until>=t)?h.until:null;
     if((!h.from||d>=h.from)&&(!end||d<=end)) s+=holdQty(h);
   }
@@ -617,12 +619,18 @@ function itemEventHold(itemId){
   return null;
 }
 
-/* situação real do item no momento (não mostra "disponível" se estiver alugado ou em evento) */
+/* situação real do item no momento (não mostra "disponível" se estiver alugado, em campo ou em evento) */
 function getItemLiveStatus(it){
   if(it.status==='manutencao') return {state:'manutencao',label:'Em manutenção',detail:'Em manutenção',badgeCls:'st-manutencao'};
   if(it.status==='danificado') return {state:'danificado',label:'Danificado',detail:'Danificado',badgeCls:'st-danificado'};
   if(it.status==='perdido') return {state:'perdido',label:'Perdido',detail:'Perdido',badgeCls:'st-perdido'};
   if(it.status==='baixado') return {state:'baixado',label:'Baixado',detail:'Baixado (descartado)',badgeCls:'st-baixado'};
+
+  const field=activeFieldHolds(it);
+  if(field.length>0){
+    const cn=contactName(field[0].contactId);
+    return {state:'em_campo',label:'Em campo',detail:'Em campo com '+cn,badgeCls:'st-planejado'};
+  }
 
   const rents=activeRentals(it);
   if(rents.length>0){
@@ -827,7 +835,7 @@ function normItem(id,d){
   if(!Array.isArray(it.tags)) it.tags=[]; if(!Array.isArray(it.custom)) it.custom=[]; if(!Array.isArray(it.maintenance)) it.maintenance=[];
   if(!STATUS.some(s=>s[0]===it.status)) it.status='disponivel';
   if(it.mode!=='qty') it.mode='unit';
-  it.holdings=(Array.isArray(it.holdings)?it.holdings:[]).filter(h=>h&&(h.kind==='alugado'||h.kind==='vendido')).map(h=>Object.assign({id:'',contactId:'',qty:1,from:'',until:'',date:'',price:'',note:'',returnedOn:''},h));
+  it.holdings=(Array.isArray(it.holdings)?it.holdings:[]).filter(h=>h&&(h.kind==='alugado'||h.kind==='vendido'||h.kind==='em_campo'||h.kind==='campo')).map(h=>Object.assign({id:'',contactId:'',qty:1,from:'',until:'',date:'',price:'',note:'',returnedOn:''},h));
   return it;
 }
 function normEvent(id,d){
@@ -1117,7 +1125,8 @@ function holdRecords(kind){
   const out=[];
   for(const it of S.all) for(const h of it.holdings||[]){
     if(kind==='alugado'){ if(h.kind==='alugado'&&!h.returnedOn) out.push({it,h}); }
-    else if(h.kind==='vendido') out.push({it,h});
+    else if(kind==='em_campo'||kind==='campo'){ if((h.kind==='em_campo'||h.kind==='campo')&&!h.returnedOn) out.push({it,h}); }
+    else if(kind==='vendido') out.push({it,h});
   }
   return out;
 }
@@ -1160,12 +1169,14 @@ function renderGeral(){
   const dateLbl = a===b ? (a===t ? 'hoje' : fmtDate(a)) : fmtRange(a,b);
 
   // Estatísticas no momento vs data futura:
-  let freeVR = 0, inEventsVR = 0, inRentVR = 0, inMaintVR = 0;
+  let freeVR = 0, inEventsVR = 0, inRentVR = 0, inFieldVR = 0, inMaintVR = 0;
   if(isToday){
     for(const it of vrHeadsets){
       const tot = totalQty(it);
       if(it.status !== 'disponivel'){
         inMaintVR += tot;
+      } else if(activeFieldHolds(it).length > 0){
+        inFieldVR += Math.min(tot, rentedOn(it, t));
       } else if(activeRentals(it).length > 0){
         inRentVR += Math.min(tot, rentedOn(it, t));
       } else if(itemEventHold(it.id)){
@@ -1230,6 +1241,19 @@ function renderGeral(){
     cells+='<button class="cday'+(d.getMonth()!==cm-1?' out':'')+(ds===t?' today':'')+(ds>=a&&ds<=b?' inr':'')+(ds===a?' sel':'')+'" data-act="pick-day" data-date="'+ds+'" aria-label="'+fmtDate(ds)+': '+sF+' livres, '+n+' evento(s)"><span class="dn">'+d.getDate()+'</span><span class="fv '+cls+'">'+(totalVR?sF:'·')+'</span><span class="ev">'+(n?'▪'.repeat(Math.min(n,4))+(n>4?'+':''):'')+'</span></button>';
   }
 
+  /* Headsets em campo com colaboradores */
+  const fieldBy=new Map();
+  holdRecords('em_campo').filter(x=>isVR(x.it)).forEach(x=>{
+    const k=x.h.contactId||'?';
+    if(!fieldBy.has(k)) fieldBy.set(k,[]);
+    fieldBy.get(k).push(x);
+  });
+  const fieldCard=fieldBy.size?'<div class="card"><div class="h2"><span class="t">Em campo com a equipe</span><small class="dim">com colaboradores</small></div>'+Array.from(fieldBy,([cid,list])=>{
+    const totalField = list.reduce((s, {h})=>s+holdQty(h), 0);
+    const lateAny = list.some(x=>isOverdue(x.h)), untils=list.map(x=>x.h.until).filter(Boolean).sort();
+    return '<button class="erow" style="grid-template-columns:1fr auto" data-act="open-contact" data-id="'+esc(cid)+'"><span class="emain"><b>'+esc(contactName(cid))+'</b><small>'+totalField+' headset(s) em campo</small></span><span class="emeta">'+(lateAny?'<span class="bad">⚠ atrasado</span>':'')+'<span class="dim">'+(untils.length?'retorno '+fmtShort(untils[untils.length-1]):'sem prazo')+'</span></span></button>';
+  }).join('')+'</div>':'';
+
   /* Headsets com terceiros (alugados no momento) */
   const rentBy=new Map();
   holdRecords('alugado').filter(x=>isVR(x.it)).forEach(x=>{
@@ -1260,6 +1284,7 @@ function renderGeral(){
     '<div class="trio" style="margin-top:10px">'+
       '<div><b>'+freeVR+'</b><span>livres para evento</span></div>'+
       '<div><b>'+inEventsVR+'</b><span>em eventos</span></div>'+
+      '<div><b>'+inFieldVR+'</b><span>em campo (equipe)</span></div>'+
       '<div><b>'+inRentVR+'</b><span>alugados</span></div>'+
       '<div><b>'+inMaintVR+'</b><span>manutenção</span></div>'+
       '<div><b>'+totalVR+'</b><span>total no estoque</span></div>'+
@@ -1279,6 +1304,7 @@ function renderGeral(){
     '<div class="grid2" style="margin-top:14px">' +
       '<div class="stack">' +
         evCard +
+        fieldCard +
         rentCard +
       '</div>' +
       '<div class="stack">' +
@@ -1372,12 +1398,13 @@ function renderInventario(){
   $('#c-chips').innerHTML='<button class="chip'+(S.ui.ctag==='all'?' on':'')+'" data-act="c-tag" data-tag="all">Todas<span class="n">'+S.items.length+'</span></button>'+
     tags.map(t=>'<button class="chip'+(S.ui.ctag.toLowerCase()===t.name.toLowerCase()?' on':'')+'" data-act="c-tag" data-tag="'+esc(t.name)+'">'+esc(t.name)+'<span class="n">'+t.items+'</span></button>').join('')+
     (noTag.length?'<button class="chip'+(S.ui.ctag==='__none'?' on':'')+'" data-act="c-tag" data-tag="__none">Sem categoria<span class="n">'+noTag.length+'</span></button>':'')+
+    '<button class="chip sp'+(S.ui.ctag==='__campo'?' on':'')+'" data-act="c-tag" data-tag="__campo">Em campo<span class="n">'+holdRecords('em_campo').length+'</span></button>'+
     '<button class="chip sp'+(S.ui.ctag==='__rent'?' on':'')+'" data-act="c-tag" data-tag="__rent">Alugados<span class="n">'+holdRecords('alugado').length+'</span></button>'+
     '<button class="chip sp'+(S.ui.ctag==='__sold'?' on':'')+'" data-act="c-tag" data-tag="__sold">Vendidos<span class="n">'+holdRecords('vendido').length+'</span></button>';
   { const _s=dayStats(S.items,todayISO()); $('#c-stats').textContent=S.items.length+' itens · '+S.items.filter(isVR).reduce((n,i)=>n+totalQty(i),0)+' VR · '+_s.T+' un. · '+_s.F+' livres hoje · '+_s.U+' fora de uso'+(_s.L?' · '+_s.L+' alugadas':''); }
   $('#c-view').textContent=S.ui.cview==='group'?'▤ Agrupado':'☰ Lista';
   const box=$('#c-list');
-  if(S.ui.ctag==='__rent'||S.ui.ctag==='__sold'){ renderHoldList(box,S.ui.ctag==='__sold'); return; }
+  if(S.ui.ctag==='__rent'||S.ui.ctag==='__sold'||S.ui.ctag==='__campo'){ renderHoldList(box,S.ui.ctag); return; }
   const list=filteredItems();
   if(!S.items.length&&!S.all.length){ box.innerHTML='<div class="empty"><b>Estoque vazio</b>As categorias nascem das tags que você põe nos itens.<br><br><button class="btn pri" data-act="new-item">+ Cadastrar item</button></div>'; return; }
   if(!list.length){ box.innerHTML='<div class="empty"><b>Nada encontrado</b>Ajuste a busca ou os filtros.</div>'; return; }
@@ -1396,29 +1423,31 @@ function renderInventario(){
 
 /* lista exclusiva de alugados / vendidos (aba Categorias) */
 function holdRowHTML({it,h}){
-  const sold=h.kind==='vendido', late=isOverdue(h), hasPrice=h.price!==''&&h.price!=null&&num(h.price)>0;
-  const sub=sold?'Vendido para '+contactName(h.contactId)+(h.date?' · '+fmtDate(h.date):''):'Com '+contactName(h.contactId)+' · '+rentLine(h);
-  const meta=sold?(hasPrice?'<b>'+esc(money(h.price))+'</b>':'<span class="dim">sem valor</span>'):(late?'<span class="badge st-cancelado">atrasado</span>':'<span class="badge st-alugado">alugado</span>')+(hasPrice?'<span class="dim">'+esc(money(h.price))+'</span>':'');
+  const sold=h.kind==='vendido', isF=h.kind==='em_campo'||h.kind==='campo', late=isOverdue(h), hasPrice=h.price!==''&&h.price!=null&&num(h.price)>0;
+  const sub=sold?'Vendido para '+contactName(h.contactId)+(h.date?' · '+fmtDate(h.date):''):isF?'Em campo com colaborador '+contactName(h.contactId)+' · '+rentLine(h):'Com '+contactName(h.contactId)+' · '+rentLine(h);
+  const meta=sold?(hasPrice?'<b>'+esc(money(h.price))+'</b>':'<span class="dim">sem valor</span>'):isF?'<span class="badge st-planejado">Em campo</span>':(late?'<span class="badge st-cancelado">atrasado</span>':'<span class="badge st-alugado">alugado</span>')+(hasPrice?'<span class="dim">'+esc(money(h.price))+'</span>':'');
   return '<button class="irow" data-act="open-item" data-id="'+esc(it.id)+'"><span class="thumb">'+(it.thumb?'<img alt="" src="'+esc(it.thumb)+'">':'▢')+'</span>'+
     '<span class="imain"><b>'+(holdQty(h)>1?holdQty(h)+'× ':'')+esc(it.name)+'</b><small>'+esc(sub)+'</small>'+(it.model&&it.model!==it.name?'<small>'+esc(it.model)+'</small>':'')+'</span><span class="imeta">'+meta+'</span></button>';
 }
-function renderHoldList(box,sold){
+function renderHoldList(box,tag){
+  const sold=tag==='__sold', isF=tag==='__campo';
+  const kind=sold?'vendido':isF?'em_campo':'alugado';
   const q=norm(S.ui.q.trim());
-  let recs=holdRecords(sold?'vendido':'alugado').filter(({it,h})=>!q||q.split(/\s+/).every(w=>norm([it.name,it.model,it.serial,contactName(h.contactId),h.note].join(' ')).includes(w)));
+  let recs=holdRecords(kind).filter(({it,h})=>!q||q.split(/\s+/).every(w=>norm([it.name,it.model,it.serial,contactName(h.contactId),h.note].join(' ')).includes(w)));
   recs.sort(sold?(a,b)=>(b.h.date||'').localeCompare(a.h.date||''):(a,b)=>(a.h.until||'9999').localeCompare(b.h.until||'9999'));
-  if(!recs.length){ box.innerHTML='<div class="empty"><b>'+(sold?'Nenhuma venda registrada':'Nada alugado agora')+'</b>Use “Alugar / Vender” na ficha de um item ou na ficha do contato.</div>'; return; }
+  if(!recs.length){ box.innerHTML='<div class="empty"><b>'+(sold?'Nenhuma venda registrada':isF?'Nenhum equipamento em campo com colaborador no momento':'Nada alugado agora')+'</b>Use “Em campo” ou “Alugar” na ficha do item ou do colaborador.</div>'; return; }
   const units=recs.reduce((s,r)=>s+holdQty(r.h),0), total=recs.reduce((s,r)=>s+num(r.h.price),0);
-  box.innerHTML='<div class="dim" style="font-size:12px;margin-bottom:8px">'+(sold?'Fora do estoque · ':'')+recs.length+' registro(s) · '+units+' unidade(s)'+(total?' · '+money(total):'')+'</div>'+recs.map(holdRowHTML).join('');
+  box.innerHTML='<div class="dim" style="font-size:12px;margin-bottom:8px">'+(isF?'Com colaboradores da equipe · ':sold?'Fora do estoque · ':'')+recs.length+' registro(s) · '+units+' unidade(s)'+(total?' · '+money(total):'')+'</div>'+recs.map(holdRowHTML).join('');
 }
 
 /* ---------- DETALHE DO ITEM ---------- */
 function holdingsHTML(it){
-  const rank=h=>(h.kind==='alugado'&&!h.returnedOn)?0:1;
+  const rank=h=>((h.kind==='alugado'||h.kind==='em_campo'||h.kind==='campo')&&!h.returnedOn)?0:1;
   const hs=(it.holdings||[]).slice().sort((a,b)=>rank(a)-rank(b)||(b.from||b.date||'').localeCompare(a.from||a.date||''));
-  if(!hs.length) return '<div class="dim">Nunca foi alugado nem vendido.</div>';
+  if(!hs.length) return '<div class="dim">Nunca foi alocado para colaborador, alugado nem vendido.</div>';
   return hs.map(h=>{
-    const sold=h.kind==='vendido', active=!sold&&!h.returnedOn, late=isOverdue(h);
-    const title=sold?'<span class="badge st-vendido">Vendido</span>':active?'<span class="badge '+(late?'st-cancelado':'st-alugado')+'">'+(late?'Atrasado':'Alugado')+'</span>':'<span class="badge st-baixado">Devolvido</span>';
+    const sold=h.kind==='vendido', isF=h.kind==='em_campo'||h.kind==='campo', active=!sold&&!h.returnedOn, late=isOverdue(h);
+    const title=sold?'<span class="badge st-vendido">Vendido</span>':isF?(active?'<span class="badge st-planejado">Em campo</span>':'<span class="badge st-baixado">Devolvido de campo</span>'):active?'<span class="badge '+(late?'st-cancelado':'st-alugado')+'">'+(late?'Atrasado':'Alugado')+'</span>':'<span class="badge st-baixado">Devolvido</span>';
     const info=[holdQty(h)>1?holdQty(h)+' un.':'',sold?(h.date?fmtDate(h.date):''):rentLine(h),h.returnedOn?'devolvido em '+fmtDate(h.returnedOn):'',(h.price!==''&&h.price!=null&&num(h.price))?money(h.price):'',h.note||''].filter(Boolean).join(' · ');
     const ids=' data-item="'+esc(it.id)+'" data-hid="'+esc(h.id)+'"';
     const acts=active?'<button class="btn sm" data-act="h-return"'+ids+'>Devolvido</button><button class="btn sm ghost" data-act="h-extend"'+ids+'>Prazo</button><button class="btn sm danger" data-act="h-del"'+ids+' aria-label="Remover registro">✕</button>'
@@ -1443,9 +1472,10 @@ function openItem(id){
   if(S.detail) S.detail.close();
   const m=openModal({title:it.name,cls:'wide',foot:true,body:''});
   m.itemId=id; S.detail=m; m.opts.onClose=()=>{ if(S.detail===m) S.detail=null; };
-  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn blue" data-act="d-move">Alugar / Vender</button><button class="btn" data-act="d-labels">Etiqueta</button><button class="btn pri" data-act="d-edit">Editar</button>';
+  m.foot.innerHTML='<button class="btn" data-mclose>Fechar</button><button class="btn blue" data-act="d-alloc-ev">▦ Atribuir a Evento</button><button class="btn pri" data-act="d-move" data-kind="em_campo">🎒 Em campo</button><button class="btn blue" data-act="d-move" data-kind="alugado">Alugar</button><button class="btn" data-act="d-labels">Etiqueta</button><button class="btn pri" data-act="d-edit">Editar</button>';
   m.el.addEventListener('click',e=>{const b=e.target.closest('[data-act]'); if(!b) return; const a=b.dataset.act;
     if(a==='d-edit') openItemEdit(m.itemId);
+    else if(a==='d-alloc-ev') openAllocateToEvent(m.itemId);
     else if(a==='d-move') openMove({itemId:m.itemId,kind:b.dataset.kind});
     else if(a==='d-labels'){const x=S.itemsById.get(m.itemId); if(x) openLabels([x]);}
     else if(a==='view-photo'){const p=(S.photoCache.get(m.itemId)||[])[+b.dataset.i]; if(p) openViewer(p.data);}
@@ -1460,33 +1490,43 @@ function renderDetail(m){
   const top=m.body.scrollTop;
   m.setTitle(it.name);
   const s=dayStats([it],todayISO());
+  const rents=activeRentals(it), fields=activeFieldHolds(it), soldAll=totalQty(it)===0&&soldQty(it)>0;
+  const evHold=itemEventHold(it.id);
   const live=getItemLiveStatus(it);
-  let detailBadge='';
+  let statusBadgeHtml = '';
   if(soldAll){
-    detailBadge='<span class="badge st-vendido">Vendido</span>';
-  } else if(live.state==='alugado'){
-    detailBadge='<span class="badge st-alugado">Alocado</span><span class="tag">'+esc(live.detail)+'</span>';
-  } else if(live.state==='evento'){
-    detailBadge='<span class="badge '+(live.isPast?'st-manutencao':'st-alugado')+'">Alocado</span><span class="tag">'+esc(live.detail)+'</span>';
-  } else if(live.state!=='disponivel'){
-    detailBadge=statusBadge(it.status);
+    statusBadgeHtml = '<span class="badge st-vendido">Vendido</span>';
+  } else if(live.badgeCls){
+    statusBadgeHtml = '<span class="badge '+live.badgeCls+'">'+esc(live.label)+'</span>';
   } else {
-    detailBadge='<span class="badge st-disponivel">Disponível</span>';
+    statusBadgeHtml = statusBadge(it.status);
   }
-  const avail=soldAll?'fora do estoque':live.state==='alugado'?'alugado hoje':live.state==='evento'?(live.isPast?'em evento (aguarda baixa)':'em evento hoje'):it.mode==='qty'?s.F+' de '+s.T+' livres hoje'+(s.L?' · '+s.L+' alugada(s)':''):(s.U?'indisponível hoje':'livre hoje');
-  const fields=ITEM_FIELDS.filter(f=>!['name','status','condition','notes'].includes(f.key)&&(!f.showIf||f.showIf(it))&&String(it[f.key]==null?'':it[f.key]).trim()!==''&&!(f.type==='number'&&f.key==='unavailQty'&&!num(it[f.key])));
-  const kv=fields.map(f=>'<div><span>'+esc(f.label)+'</span><b>'+fieldValueHTML(f,it[f.key])+'</b></div>').join('')+(it.custom||[]).filter(c=>c.k).map(c=>'<div><span>'+esc(c.k)+'</span><b>'+esc(c.v)+'</b></div>').join('');
+
+  let extraBadges = '';
+  if(fields.length){
+    extraBadges += '<span class="badge st-planejado">Em campo: '+esc(fields.map(h=>contactName(h.contactId)).filter((v,i,a)=>a.indexOf(v)===i).join(', '))+'</span>';
+  }
+  if(rents.length){
+    extraBadges += '<span class="badge st-alugado">Alugado: '+esc(rents.map(h=>contactName(h.contactId)).filter((v,i,a)=>a.indexOf(v)===i).join(', '))+'</span>';
+  }
+  if(evHold){
+    extraBadges += '<span class="badge '+(evHold.isPast?'st-manutencao':'st-alugado')+'">'+(evHold.isPast?'Aguardando baixa: ':'Em evento: ')+esc(evHold.ev.name||'Evento')+'</span>';
+  }
+
+  const avail=soldAll?'fora do estoque':it.mode==='qty'?s.F+' de '+s.T+' livres hoje'+(s.L?' · '+s.L+' alugada(s)':''):(fields.length?'em campo com equipe':s.L?'alugado hoje':s.U?'indisponível hoje':s.R?'em evento hoje':'livre hoje');
+  const dFields=ITEM_FIELDS.filter(f=>!['name','status','condition','notes'].includes(f.key)&&(!f.showIf||f.showIf(it))&&String(it[f.key]==null?'':it[f.key]).trim()!==''&&!(f.type==='number'&&f.key==='unavailQty'&&!num(it[f.key])));
+  const kv=dFields.map(f=>'<div><span>'+esc(f.label)+'</span><b>'+fieldValueHTML(f,it[f.key])+'</b></div>').join('')+(it.custom||[]).filter(c=>c.k).map(c=>'<div><span>'+esc(c.k)+'</span><b>'+esc(c.v)+'</b></div>').join('');
   const maint=(it.maintenance||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
   const uses=S.events.filter(ev=>ev._m.has(it.id)).sort((a,b)=>b.start.localeCompare(a.start));
   const maintCost=maint.reduce((t,x)=>t+num(x.cost),0);
   m.body.innerHTML=
-   '<div class="row" style="margin-bottom:10px">'+detailBadge+condHTML(it.condition)+'<span class="'+(s.F===0&&!soldAll?'bad':'good')+'">'+esc(avail)+'</span></div>'+
+   '<div class="row" style="margin-bottom:10px;flex-wrap:wrap;gap:6px">'+statusBadgeHtml+extraBadges+condHTML(it.condition)+'<span class="'+(s.F===0&&!soldAll?'bad':'good')+'">'+esc(avail)+'</span></div>'+
    ((it.tags||[]).length?'<div class="tagline" style="margin-bottom:10px">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</div>':'')+
    '<div id="d-photos" class="dim" style="margin-bottom:12px">'+(it.photoCount?'Carregando fotos…':'')+'</div>'+
    (kv||soldQty(it)?'<div class="kv">'+kv+(soldQty(it)&&it.mode==='qty'?'<div><span>Em estoque</span><b>'+totalQty(it)+' (vendidos: '+soldQty(it)+')</b></div>':'')+'</div>':'')+
    (it.notes?'<div class="h3">Observações</div><div class="pre">'+esc(it.notes)+'</div>':'')+
-   '<div class="h3">Alugado / vendido'+((it.holdings||[]).length?' · '+it.holdings.length+' registro(s)':'')+'</div>'+
-   '<div class="row" style="margin-bottom:8px"><button class="btn sm blue" data-act="d-move" data-kind="alugado">+ Alugar</button><button class="btn sm blue" data-act="d-move" data-kind="vendido">+ Vender</button></div>'+holdingsHTML(it)+
+   '<div class="h3">Alocações e saídas (Evento, Em campo com equipe, Aluguel)'+((it.holdings||[]).length?' · '+it.holdings.length+' registro(s)':'')+'</div>'+
+   '<div class="row" style="margin-bottom:8px;flex-wrap:wrap;gap:6px"><button class="btn sm blue" data-act="d-alloc-ev">▦ Atribuir a Evento</button><button class="btn sm pri" data-act="d-move" data-kind="em_campo">🎒 Em campo (Colaborador)</button><button class="btn sm blue" data-act="d-move" data-kind="alugado">◈ Alugar</button><button class="btn sm ghost" data-act="d-move" data-kind="vendido">◉ Vender</button></div>'+holdingsHTML(it)+
    (it.qrEnabled?'<div class="h3">QR Code</div>'+qrBlockHTML(it):'')+
    histHTML(it)+'<div class="h3">Manutenção'+(maint.length?' · '+maint.length+' registro(s)'+(maintCost?' · '+money(maintCost):''):'')+'</div>'+
    '<div class="row" style="margin-bottom:8px"><button class="btn sm" data-act="m-toggle">+ Registrar manutenção</button></div>'+
@@ -1521,220 +1561,470 @@ async function saveMaintFromDetail(m){
 }
 
 /* =====================================================================
-   FORMULÁRIO DO ITEM (usado em "Cadastrar" e na janela "Editar")
+   FORMULÁRIO DE ITEM (Cadastro e Edição)
    ===================================================================== */
 const liveDrafts = new Map();
-const newId = ()=>db?db.collection(COL.photos).doc().id:Math.random().toString(36).slice(2,12);
-const photoRef = id=>db.collection(COL.photos).doc(id);
 function newDraft(){
-  const d=DEFAULT_ITEM(); d.id=db?db.collection(COL.items).doc().id:Math.random().toString(36).slice(2,12);
-  d._photos=[]; d._orig=[]; d._photosLoaded=true; return d;
+  const id = (db && db.collection) ? db.collection(COL.items).doc().id : Math.random().toString(36).slice(2, 10);
+  const d = Object.assign(DEFAULT_ITEM(), {
+    id,
+    _photos: [],
+    _orig: [],
+    _photosLoaded: true
+  });
+  liveDrafts.set(id, d);
+  return d;
 }
 function draftFromItem(it){
-  const d=clone(it); delete d.thumb; d._photos=[]; d._orig=[]; d._photosLoaded=!it.photoCount; return d;
-}
-const fieldByKey = k=>ITEM_FIELDS.find(f=>f.key===k);
-function formLayout(){
-  const known=new Set(FORM_LAYOUT), extra=[];
-  ITEM_FIELDS.forEach(f=>{ if(!known.has(f.sec)&&!extra.includes(f.sec)) extra.push(f.sec); });
-  const out=[]; FORM_LAYOUT.forEach(n=>{ if(n==='@photos') extra.forEach(x=>out.push(x)); out.push(n); });
-  return out;
-}
-function fieldHTML(f,ctx){
-  const d=ctx.draft, id='ff-'+ctx.uid+'-'+f.key, val=d[f.key]==null?'':d[f.key];
-  let input;
-  if(f.type==='select') input='<select id="'+id+'" data-f="'+f.key+'">'+f.options.map(o=>'<option value="'+esc(o[0])+'"'+(String(o[0])===String(val)?' selected':'')+'>'+esc(o[1])+'</option>').join('')+'</select>';
-  else if(f.type==='textarea') input='<textarea id="'+id+'" data-f="'+f.key+'" placeholder="'+esc(f.ph||'')+'">'+esc(val)+'</textarea>';
-  else input='<input type="'+f.type+'" id="'+id+'" data-f="'+f.key+'" value="'+esc(val)+'" placeholder="'+esc(f.ph||'')+'"'+(f.suggest?' list="dl-'+ctx.uid+'-'+f.key+'"':'')+(f.min!=null?' min="'+f.min+'"':'')+(f.step?' step="'+f.step+'"':'')+(f.type==='number'?' inputmode="decimal"':'')+(f.type==='text'?' autocomplete="off"':'')+'>';
-  return '<div class="field'+(f.type==='textarea'?' full':'')+'"><label for="'+id+'">'+esc(f.label)+(f.req?' *':'')+'</label>'+input+(f.hint?'<span class="hint">'+esc(f.hint)+'</span>':'')+'</div>';
-}
-function sectionHTML(name,ctx){
-  const d=ctx.draft, u=ctx.uid;
-  if(name==='@tags'){
-    const used=new Set((d.tags||[]).map(t=>t.toLowerCase()));
-    const sug=tagIndex().filter(t=>!used.has(t.name.toLowerCase())).slice(0,14);
-    return '<div class="sect" data-sec="@tags"><div class="h3">Categorias (tags)</div>'+
-      '<div class="tagsin">'+(d.tags||[]).map(t=>'<span class="tag rm" data-act="f-tag-rm" data-tag="'+esc(t)+'" title="Remover">'+esc(t)+' ✕</span>').join('')+
-      '<input type="text" data-role="tag-in" list="dl-'+u+'-tags" placeholder="'+((d.tags||[]).length?'Outra tag…':'Digite uma tag e Enter (ex.: VR, Bateria)')+'" enterkeyhint="done" autocomplete="off" aria-label="Adicionar tag"></div>'+
-      '<div class="hint dim" style="margin-top:4px">Cada tag vira uma categoria no Inventário. Pode usar várias por item.</div>'+
-      (sug.length?'<div class="chips" style="margin-top:8px">'+sug.map(t=>'<button type="button" class="chip" data-act="f-tag-add" data-tag="'+esc(t.name)+'">+ '+esc(t.name)+'</button>').join('')+'</div>':'')+'</div>';
-  }
-  if(name==='@photos'){
-    const ph=d._photos||[];
-    return '<div class="sect" data-sec="@photos"><div class="h3">Fotos</div>'+
-      (!d._photosLoaded?'<div class="dim">Carregando fotos…</div>':
-      '<div class="photos">'+ph.map((p,i)=>'<div class="ph"><img alt="Foto '+(i+1)+'" src="'+esc(p.data)+'" data-act="f-photo-view" data-i="'+i+'"><button type="button" class="x" data-act="f-photo-rm" data-i="'+i+'" aria-label="Remover foto">✕</button>'+(i===0?'<span class="cv" style="cursor:default">capa</span>':'<button type="button" class="cv" data-act="f-photo-cover" data-i="'+i+'">tornar capa</button>')+'</div>').join('')+
-      (ph.length<8?'<label class="ph add">+ Adicionar<br>foto<input type="file" accept="image/*" multiple hidden data-role="photo-in"></label>':'')+'</div>')+
-      '<div class="hint dim" style="margin-top:4px">Até 8 fotos, comprimidas automaticamente. Tire na hora com a câmera ou escolha da galeria.</div></div>';
-  }
-  if(name==='@maintenance'){
-    const list=(d.maintenance||[]).slice().sort((a,b)=>(b.date||'').localeCompare(a.date||''));
-    return '<div class="sect" data-sec="@maintenance"><div class="h3">Histórico de manutenção</div>'+
-      (list.length?list.map(x=>'<div class="mrow"><div><b>'+esc(fmtDate(x.date))+' · '+esc(x.type||'')+'</b>'+(x.cost?' <small>'+esc(money(x.cost))+'</small>':'')+'<br>'+esc(x.desc||'')+(x.by?' <small class="dim">— '+esc(x.by)+'</small>':'')+'</div><button type="button" class="btn sm danger" data-act="f-m-rm" data-mid="'+esc(x.id)+'" aria-label="Remover registro">✕</button></div>').join(''):'<div class="dim" style="margin-bottom:8px">Nenhum registro ainda.</div>')+
-      '<div class="fgrid" style="margin-top:10px"><div class="field"><label>Data</label><input type="date" data-role="m-date" value="'+todayISO()+'"></div>'+
-      '<div class="field"><label>Tipo</label><select data-role="m-type">'+MAINT_TYPES.map(t=>'<option>'+esc(t)+'</option>').join('')+'</select></div>'+
-      '<div class="field full"><label>O que foi feito</label><input type="text" data-role="m-desc" placeholder="Ex.: troca de almofada facial" autocomplete="off"></div>'+
-      '<div class="field"><label>Custo (R$)</label><input type="number" data-role="m-cost" min="0" step="0.01" inputmode="decimal"></div>'+
-      '<div class="field"><label>Responsável</label><input type="text" data-role="m-by" autocomplete="off"></div></div>'+
-      '<div class="row" style="margin-top:8px"><button type="button" class="btn sm" data-act="f-m-add">+ Adicionar ao histórico</button></div></div>';
-  }
-  if(name==='@custom'){
-    return '<div class="sect" data-sec="@custom"><div class="h3">Campos extras</div><div class="hint dim" style="margin-bottom:8px">Para qualquer detalhe que não tem campo próprio (voltagem, cor, licença, tamanho…).</div>'+
-      (d.custom||[]).map((c,i)=>'<div class="crow"><input type="text" data-c="k" data-i="'+i+'" value="'+esc(c.k)+'" placeholder="Campo" list="dl-'+u+'-ckeys" aria-label="Nome do campo"><input type="text" data-c="v" data-i="'+i+'" value="'+esc(c.v)+'" placeholder="Valor" aria-label="Valor"><button type="button" class="btn sm danger" data-act="f-c-rm" data-i="'+i+'" aria-label="Remover campo">✕</button></div>').join('')+
-      '<button type="button" class="btn sm" data-act="f-c-add">+ Campo</button></div>';
-  }
-  if(name==='@qr'){
-    return '<div class="sect" data-sec="@qr"><div class="h3">QR Code</div><label class="check"><input type="checkbox" data-f="qrEnabled"'+(d.qrEnabled?' checked':'')+'> Gerar QR Code para colar no equipamento</label>'+
-      (d.qrEnabled?'<div style="margin-top:12px">'+qrBlockHTML(d)+'<div class="hint dim" style="margin-top:8px">O QR abre a ficha deste item neste app'+(ctx.mode==='create'?' — passa a funcionar depois de salvar':'')+'.</div></div>':'')+'</div>';
-  }
-  const fs=ITEM_FIELDS.filter(f=>f.sec===name&&(!f.showIf||f.showIf(d)));
-  if(!fs.length) return '';
-  return '<div class="sect" data-sec="'+esc(name)+'"><div class="h3">'+esc(name)+'</div><div class="fgrid">'+fs.map(f=>fieldHTML(f,ctx)).join('')+'</div></div>';
-}
-function formHTML(ctx){
-  const u=ctx.uid;
-  const ckeys=new Set(); S.items.forEach(it=>(it.custom||[]).forEach(c=>c.k&&ckeys.add(c.k)));
-  const dls=ITEM_FIELDS.filter(f=>f.suggest).map(f=>'<datalist id="dl-'+u+'-'+f.key+'">'+distinct(f.key).map(v=>'<option value="'+esc(v)+'"></option>').join('')+'</datalist>').join('')+
-    '<datalist id="dl-'+u+'-tags">'+tagIndex().map(t=>'<option value="'+esc(t.name)+'"></option>').join('')+'</datalist>'+
-    '<datalist id="dl-'+u+'-ckeys">'+Array.from(ckeys).map(k=>'<option value="'+esc(k)+'"></option>').join('')+'</datalist>';
-  const bar=ctx.mode==='create'
-    ?'<button type="button" class="btn pri" data-act="f-save">Salvar item</button><button type="button" class="btn" data-act="f-save-again">Salvar e cadastrar outro</button><button type="button" class="btn ghost" data-act="f-clear">Limpar</button>'
-    :'<button type="button" class="btn pri" data-act="f-save">Salvar alterações</button><button type="button" class="btn" data-act="f-cancel">Cancelar</button><button type="button" class="btn danger" style="margin-left:auto" data-act="f-delete">Excluir item</button>';
-  return dls+formLayout().map(n=>sectionHTML(n,ctx)).join('')+'<div class="actionbar">'+bar+'</div>';
+  const d = clone(it);
+  d._photos = [];
+  d._orig = [];
+  d._photosLoaded = !it.photoCount;
+  liveDrafts.set(d.id, d);
+  return d;
 }
 
-function mountItemForm(root,opts){
-  const ctx={draft:opts.draft,mode:opts.mode,dirty:false,saving:false,root,opts,uid:Math.random().toString(36).slice(2,6)};
-  liveDrafts.set(ctx.draft.id,ctx.draft);
-  ctx.render=()=>{ const sc=opts.scroller, top=sc?sc.scrollTop:0; root.innerHTML=formHTML(ctx); if(sc) sc.scrollTop=top; fillQrSlots(root); };
-  ctx.renderSec=name=>{ const el=root.querySelector('[data-sec="'+name+'"]'); if(!el){ctx.render();return;} el.outerHTML=sectionHTML(name,ctx); if(name==='@qr') fillQrSlots(root); };
-  const role=r=>root.querySelector('[data-role="'+r+'"]');
-  const addTags=raw=>{
-    const inp=role('tag-in'); if(inp) inp.value='';   /* evita novo "change" durante o redesenho */
-    const d=ctx.draft; d.tags=d.tags||[];
-    String(raw||'').split(',').forEach(x=>{ const t=canonTag(x); if(t&&!d.tags.some(y=>y.toLowerCase()===t.toLowerCase())&&d.tags.length<12) d.tags.push(t); });
-    ctx.dirty=true; ctx.renderSec('@tags'); const i=role('tag-in'); if(i) i.focus();
+function mountItemForm(container, opts){
+  const { draft, mode, scroller, modal } = opts;
+  const ctx = { dirty: false, saving: false, renderSec: null };
+  const uid = Math.random().toString(36).slice(2, 7);
+
+  if(modal && modal.foot){
+    if(mode === 'create'){
+      modal.foot.innerHTML = '<button type="button" class="btn" data-mclose>Cancelar</button><button type="button" class="btn pri" data-role="save">Cadastrar item</button>';
+    } else {
+      modal.foot.innerHTML = '<button type="button" class="btn danger" data-role="del" style="margin-right:auto">Excluir item</button><button type="button" class="btn" data-mclose>Cancelar</button><button type="button" class="btn pri" data-role="save">Salvar alterações</button>';
+    }
+  }
+
+  const dls = ITEM_FIELDS.filter(f => f.suggest).map(f => {
+    const vals = distinct(f.key);
+    return '<datalist id="dl-' + uid + '-' + f.key + '">' + vals.map(v => '<option value="' + esc(v) + '"></option>').join('') + '</datalist>';
+  }).join('');
+
+  function renderFieldSec(secName){
+    const fields = ITEM_FIELDS.filter(f => f.sec === secName && (!f.showIf || f.showIf(draft)));
+    if(!fields.length) return '';
+    const fieldsHTML = fields.map(f => {
+      const idf = 'f-' + uid + '-' + f.key;
+      let inputHTML = '';
+      if(f.type === 'select'){
+        const optsHtml = (f.options || []).map(([val, lbl]) => {
+          const sel = String(draft[f.key] == null ? '' : draft[f.key]) === String(val) ? ' selected' : '';
+          return '<option value="' + esc(val) + '"' + sel + '>' + esc(lbl) + '</option>';
+        }).join('');
+        inputHTML = '<select id="' + idf + '" data-f="' + f.key + '">' + optsHtml + '</select>';
+      } else if(f.type === 'textarea'){
+        inputHTML = '<textarea id="' + idf + '" data-f="' + f.key + '" placeholder="' + esc(f.ph || '') + '">' + esc(draft[f.key] || '') + '</textarea>';
+      } else {
+        const val = draft[f.key] != null ? draft[f.key] : '';
+        inputHTML = '<input type="' + f.type + '" id="' + idf + '" data-f="' + f.key + '" value="' + esc(val) + '" placeholder="' + esc(f.ph || '') + '" autocomplete="off"' +
+          (f.suggest ? ' list="dl-' + uid + '-' + f.key + '"' : '') +
+          (f.min != null ? ' min="' + f.min + '"' : '') +
+          (f.step != null ? ' step="' + f.step + '"' : '') +
+          (f.type === 'number' ? ' inputmode="decimal"' : '') + '>';
+      }
+      return '<div class="field' + (f.type === 'textarea' || f.key === 'notes' ? ' full' : '') + '">' +
+        '<label for="' + idf + '">' + esc(f.label) + (f.req ? ' *' : '') + '</label>' +
+        inputHTML +
+        (f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '') +
+        '</div>';
+    }).join('');
+    return '<div class="sect" data-sec="' + esc(secName) + '">' +
+      '<div class="h3" style="margin-top:0">' + esc(secName) + '</div>' +
+      '<div class="fgrid">' + fieldsHTML + '</div>' +
+      '</div>';
+  }
+
+  function renderTagsSec(){
+    const allT = tagIndex();
+    const currentTags = draft.tags || [];
+    const unused = allT.filter(t => !currentTags.some(x => x.toLowerCase() === t.name.toLowerCase()));
+    return '<div class="sect" data-sec="@tags">' +
+      '<div class="h3" style="margin-top:0">Categorias e Tags</div>' +
+      '<div class="tagsin">' +
+      currentTags.map(t => '<span class="tag rm" data-tag-rm="' + esc(t) + '" title="Remover">' + esc(t) + ' ✕</span>').join('') +
+      '<input type="text" data-role="tag-in" placeholder="' + (currentTags.length ? 'Adicionar mais tag…' : 'Ex.: Headset, Cabo, Acessório (Enter ou vírgula)') + '" autocomplete="off" enterkeyhint="done">' +
+      '</div>' +
+      (unused.length ? '<div class="chips" style="margin-top:8px">' + unused.slice(0, 15).map(t => '<button type="button" class="chip" data-tag-add="' + esc(t.name) + '">+ ' + esc(t.name) + '</button>').join('') + '</div>' : '') +
+      '</div>';
+  }
+
+  function renderPhotosSec(){
+    const photos = draft._photos || [];
+    const photosHTML = photos.map((p, i) => {
+      return '<div class="ph" data-ph-idx="' + i + '">' +
+        '<img src="' + esc(p.data) + '" alt="Foto ' + (i + 1) + '">' +
+        '<button type="button" class="x" data-ph-del="' + i + '" title="Remover foto">✕</button>' +
+        (i === 0
+          ? '<span class="cv" style="background:var(--g);color:var(--on-g);font-weight:bold">★ Capa</span>'
+          : '<button type="button" class="cv" data-ph-cover="' + i + '" title="Definir como foto de capa">Definir capa</button>') +
+        '</div>';
+    }).join('');
+
+    return '<div class="sect" data-sec="@photos">' +
+      '<div class="h3" style="margin-top:0">Fotos ' + (photos.length ? '· ' + photos.length : '') + ' <small class="dim">(a primeira é a capa no inventário)</small></div>' +
+      '<div class="photos">' +
+      photosHTML +
+      '<label class="ph add" style="cursor:pointer" title="Adicionar fotos">' +
+      '<span>+ Foto<br><small class="dim">ou câmera</small></span>' +
+      '<input type="file" accept="image/*" multiple class="hide" data-role="ph-input">' +
+      '</label>' +
+      '</div>' +
+      '</div>';
+  }
+
+  function renderMaintenanceSec(){
+    const mList = draft.maintenance || [];
+    if(!mList.length && mode === 'create') return '';
+    return '<div class="sect" data-sec="@maintenance">' +
+      '<div class="h3" style="margin-top:0">Histórico de Manutenção ' + (mList.length ? '· ' + mList.length : '') + '</div>' +
+      (mList.length ? '<div class="tl">' + mList.map(x => '<div class="it"><b>' + esc(fmtDate(x.date)) + ' · ' + esc(x.type || 'Manutenção') + '</b>' + (x.cost ? ' <small>' + esc(money(x.cost)) + '</small>' : '') + '<br>' + esc(x.desc || '') + (x.by ? '<br><small>por ' + esc(x.by) + '</small>' : '') + '</div>').join('') + '</div>' : '<div class="dim" style="font-size:12px">Nenhum registro de manutenção.</div>') +
+      '</div>';
+  }
+
+  function renderCustomSec(){
+    const cList = draft.custom || [];
+    return '<div class="sect" data-sec="@custom">' +
+      '<div class="h3" style="margin-top:0">Campos personalizados <small class="dim">(informações adicionais)</small></div>' +
+      '<div class="stack" style="gap:6px">' +
+      cList.map((c, i) => {
+        return '<div class="crow">' +
+          '<input type="text" placeholder="Nome do campo (ex.: Cor)" data-c-k="' + i + '" value="' + esc(c.k || '') + '" autocomplete="off">' +
+          '<input type="text" placeholder="Valor (ex.: Branco)" data-c-v="' + i + '" value="' + esc(c.v || '') + '" autocomplete="off">' +
+          '<button type="button" class="btn sm danger" data-c-rm="' + i + '" aria-label="Remover">✕</button>' +
+          '</div>';
+      }).join('') +
+      '</div>' +
+      '<div style="margin-top:8px"><button type="button" class="btn sm" data-role="c-add">+ Adicionar campo</button></div>' +
+      '</div>';
+  }
+
+  function renderQrSec(){
+    const enabled = draft.qrEnabled !== false;
+    return '<div class="sect" data-sec="@qr">' +
+      '<div class="h3" style="margin-top:0">Etiqueta e QR Code</div>' +
+      '<label class="check" style="margin-bottom:8px">' +
+      '<input type="checkbox" data-role="qr-toggle"' + (enabled ? ' checked' : '') + '>' +
+      '<span>Habilitar QR Code e impressão de etiqueta</span>' +
+      '</label>' +
+      '<div id="f-qr-block-' + uid + '" class="' + (enabled ? '' : 'hide') + '">' +
+      qrBlockHTML(draft) +
+      '</div>' +
+      '</div>';
+  }
+
+  function renderSection(sec){
+    if(sec === '@tags') return renderTagsSec();
+    if(sec === '@photos') return renderPhotosSec();
+    if(sec === '@maintenance') return renderMaintenanceSec();
+    if(sec === '@custom') return renderCustomSec();
+    if(sec === '@qr') return renderQrSec();
+    return renderFieldSec(sec);
+  }
+
+  ctx.renderSec = function(secName){
+    const el = container.querySelector('[data-sec="' + secName + '"]');
+    if(el){
+      el.outerHTML = renderSection(secName);
+    } else {
+      renderAll();
+    }
+    if(secName === '@qr') fillQrSlots(container);
   };
-  root.addEventListener('input',e=>{
-    const t=e.target;
-    if(t.dataset.role==='tag-in'){ if(t.value.includes(',')) addTags(t.value); return; }
-    if(t.dataset.f){ ctx.draft[t.dataset.f]=t.type==='checkbox'?t.checked:t.value; ctx.dirty=true; }
-    else if(t.dataset.c){ const c=ctx.draft.custom[+t.dataset.i]; if(c){c[t.dataset.c]=t.value; ctx.dirty=true;} }
-  });
-  root.addEventListener('change',async e=>{
-    const t=e.target;
+
+  function renderAll(){
+    const top = scroller ? scroller.scrollTop : 0;
+    container.innerHTML = dls + FORM_LAYOUT.map(renderSection).join('');
+    fillQrSlots(container);
+    if(scroller) scroller.scrollTop = top;
+  }
+
+  renderAll();
+
+  function addTag(raw){
+    const tagIn = container.querySelector('[data-role="tag-in"]');
+    if(tagIn) tagIn.value = '';
+    String(raw || '').split(',').forEach(x => {
+      const t = canonTag(x);
+      if(t && !(draft.tags || []).some(y => y.toLowerCase() === t.toLowerCase())){
+        draft.tags = draft.tags || [];
+        draft.tags.push(t);
+        ctx.dirty = true;
+      }
+    });
+    ctx.renderSec('@tags');
+    const newIn = container.querySelector('[data-role="tag-in"]');
+    if(newIn) newIn.focus();
+  }
+
+  // Handle inputs
+  container.addEventListener('input', e => {
+    const t = e.target;
     if(t.dataset.f){
-      const f=fieldByKey(t.dataset.f); ctx.draft[t.dataset.f]=t.type==='checkbox'?t.checked:t.value; ctx.dirty=true;
-      if(t.dataset.f==='qrEnabled') ctx.renderSec('@qr'); else if(f&&f.reflow) ctx.render();
-    }else if(t.dataset.role==='tag-in'){ if(t.isConnected&&t.value.trim()) addTags(t.value); }
-    else if(t.dataset.role==='photo-in'){ const files=Array.from(t.files||[]); t.value=''; await addPhotos(ctx,files); }
-  });
-  root.addEventListener('keydown',e=>{
-    const t=e.target;
-    if(t.dataset&&t.dataset.role==='tag-in'){
-      if(e.key==='Enter'){ e.preventDefault(); if(t.value.trim()) addTags(t.value); }
-      else if(e.key==='Backspace'&&!t.value&&(ctx.draft.tags||[]).length){ ctx.draft.tags.pop(); ctx.dirty=true; ctx.renderSec('@tags'); const i=role('tag-in'); if(i) i.focus(); }
+      draft[t.dataset.f] = t.value;
+      ctx.dirty = true;
+      if(t.dataset.f === 'name' && modal){
+        modal.setTitle(t.value ? (mode === 'create' ? 'Cadastrar: ' + t.value : 'Editar: ' + t.value) : (mode === 'create' ? 'Cadastrar item' : 'Editar item'));
+      }
+    } else if(t.dataset.role === 'tag-in'){
+      if(t.value.includes(',')){
+        addTag(t.value);
+      }
+    } else if(t.dataset.cK !== undefined){
+      const idx = +t.dataset.cK;
+      if(draft.custom && draft.custom[idx]){
+        draft.custom[idx].k = t.value;
+        ctx.dirty = true;
+      }
+    } else if(t.dataset.cV !== undefined){
+      const idx = +t.dataset.cV;
+      if(draft.custom && draft.custom[idx]){
+        draft.custom[idx].v = t.value;
+        ctx.dirty = true;
+      }
     }
   });
-  root.addEventListener('click',async e=>{
-    const b=e.target.closest('[data-act]'); if(!b||!root.contains(b)) return;
-    const a=b.dataset.act, d=ctx.draft; if(a.indexOf('f-')!==0) return;
-    if(a==='f-tag-add') addTags(b.dataset.tag);
-    else if(a==='f-tag-rm'){ d.tags=(d.tags||[]).filter(x=>x!==b.dataset.tag); ctx.dirty=true; ctx.renderSec('@tags'); }
-    else if(a==='f-photo-rm'){ d._photos.splice(+b.dataset.i,1); ctx.dirty=true; ctx.renderSec('@photos'); }
-    else if(a==='f-photo-cover'){ const p=d._photos.splice(+b.dataset.i,1)[0]; d._photos.unshift(p); ctx.dirty=true; ctx.renderSec('@photos'); }
-    else if(a==='f-photo-view'){ const p=d._photos[+b.dataset.i]; if(p) openViewer(p.data); }
-    else if(a==='f-m-add'){
-      const desc=role('m-desc').value.trim(); if(!desc){toast('Descreva o que foi feito','warn');role('m-desc').focus();return;}
-      d.maintenance=(d.maintenance||[]).concat([{id:Math.random().toString(36).slice(2,10),date:role('m-date').value||todayISO(),type:role('m-type').value,desc,cost:num(role('m-cost').value)||0,by:role('m-by').value.trim()}]);
-      ctx.dirty=true; ctx.renderSec('@maintenance');
+
+  // Handle change and reflow
+  container.addEventListener('change', async e => {
+    const t = e.target;
+    if(t.dataset.f){
+      draft[t.dataset.f] = t.value;
+      ctx.dirty = true;
+      const fDef = ITEM_FIELDS.find(f => f.key === t.dataset.f);
+      if(fDef && fDef.reflow){
+        ctx.renderSec(fDef.sec || 'Estoque');
+      }
+    } else if(t.dataset.role === 'tag-in'){
+      if(t.value.trim()){
+        addTag(t.value);
+      }
+    } else if(t.dataset.role === 'qr-toggle'){
+      draft.qrEnabled = t.checked;
+      ctx.dirty = true;
+      const box = $('#f-qr-block-' + uid, container);
+      if(box) box.classList.toggle('hide', !draft.qrEnabled);
+    } else if(t.dataset.role === 'ph-input'){
+      const files = Array.from(t.files || []);
+      for(const file of files){
+        try {
+          const dataUrl = await photoFromFile(file);
+          draft._photos = draft._photos || [];
+          draft._photos.push({ id: Math.random().toString(36).slice(2, 10), data: dataUrl, ts: Date.now() });
+          ctx.dirty = true;
+        } catch(err){
+          toast('Não foi possível ler a imagem: ' + (err.message || err), 'err');
+        }
+      }
+      ctx.renderSec('@photos');
     }
-    else if(a==='f-m-rm'){ d.maintenance=(d.maintenance||[]).filter(x=>x.id!==b.dataset.mid); ctx.dirty=true; ctx.renderSec('@maintenance'); }
-    else if(a==='f-c-add'){ d.custom=(d.custom||[]).concat([{k:'',v:''}]); ctx.dirty=true; ctx.renderSec('@custom'); const ins=root.querySelectorAll('[data-c="k"]'); if(ins.length) ins[ins.length-1].focus(); }
-    else if(a==='f-c-rm'){ d.custom.splice(+b.dataset.i,1); ctx.dirty=true; ctx.renderSec('@custom'); }
-    else if(a==='f-save') saveItemDraft(ctx,false);
-    else if(a==='f-save-again') saveItemDraft(ctx,true);
-    else if(a==='f-clear'){ if(!ctx.dirty||await confirmBox('Limpar tudo o que foi preenchido?',{ok:'Limpar',danger:true})){ liveDrafts.delete(d.id); S.createDraft=newDraft(); opts.remount&&opts.remount(); } }
-    else if(a==='f-cancel') opts.modal&&opts.modal.request();
-    else if(a==='f-delete') deleteItemFlow(ctx);
   });
-  ctx.render();
+
+  // Handle keyboard events (e.g. Enter on tag input)
+  container.addEventListener('keydown', e => {
+    const t = e.target;
+    if(t.dataset.role === 'tag-in'){
+      if(e.key === 'Enter'){
+        e.preventDefault();
+        if(t.value.trim()){
+          addTag(t.value);
+        }
+      } else if(e.key === 'Backspace' && !t.value && (draft.tags || []).length){
+        draft.tags.pop();
+        ctx.dirty = true;
+        ctx.renderSec('@tags');
+        const newIn = container.querySelector('[data-role="tag-in"]');
+        if(newIn) newIn.focus();
+      }
+    }
+  });
+
+  // Handle clicks within container
+  container.addEventListener('click', e => {
+    const tagAdd = e.target.closest('[data-tag-add]');
+    if(tagAdd){
+      addTag(tagAdd.dataset.tagAdd);
+      return;
+    }
+    const tagRm = e.target.closest('[data-tag-rm]');
+    if(tagRm){
+      const tag = tagRm.dataset.tagRm;
+      draft.tags = (draft.tags || []).filter(t => t.toLowerCase() !== tag.toLowerCase());
+      ctx.dirty = true;
+      ctx.renderSec('@tags');
+      return;
+    }
+    const phDel = e.target.closest('[data-ph-del]');
+    if(phDel){
+      const idx = +phDel.dataset.phDel;
+      draft._photos.splice(idx, 1);
+      ctx.dirty = true;
+      ctx.renderSec('@photos');
+      return;
+    }
+    const phCover = e.target.closest('[data-ph-cover]');
+    if(phCover){
+      const idx = +phCover.dataset.phCover;
+      const p = draft._photos.splice(idx, 1)[0];
+      draft._photos.unshift(p);
+      ctx.dirty = true;
+      ctx.renderSec('@photos');
+      return;
+    }
+    const cAdd = e.target.closest('[data-role="c-add"]');
+    if(cAdd){
+      draft.custom = draft.custom || [];
+      draft.custom.push({ k: '', v: '' });
+      ctx.dirty = true;
+      ctx.renderSec('@custom');
+      return;
+    }
+    const cRm = e.target.closest('[data-c-rm]');
+    if(cRm){
+      const idx = +cRm.dataset.cRm;
+      draft.custom.splice(idx, 1);
+      ctx.dirty = true;
+      ctx.renderSec('@custom');
+      return;
+    }
+  });
+
+  async function saveItem(){
+    if(ctx.saving) return;
+    const name = String(draft.name || '').trim();
+    if(!name){
+      toast('Informe o nome do item', 'warn');
+      const el = container.querySelector('[data-f="name"]');
+      if(el){ el.focus(); el.scrollIntoView({ block: 'center' }); }
+      return;
+    }
+    ctx.saving = true;
+    if(modal && modal.el) $$('.sheet-foot .btn', modal.el).forEach(b => b.disabled = true);
+    try {
+      const now = Date.now();
+      const data = {};
+      for(const f of ITEM_FIELDS){
+        let v = draft[f.key];
+        if(f.type === 'number') v = (v === '' || v == null) ? '' : num(v);
+        else if(typeof v === 'string') v = v.trim();
+        data[f.key] = v != null ? v : '';
+      }
+      if(data.mode === 'qty'){
+        data.qty = Math.max(1, Math.floor(num(data.qty)) || 1);
+        data.unavailQty = Math.max(0, Math.floor(num(data.unavailQty)) || 0);
+      } else {
+        data.qty = 1;
+        data.unavailQty = 0;
+      }
+      data.tags = (draft.tags || []).map(t => canonTag(t)).filter(Boolean);
+      data.custom = (draft.custom || []).filter(c => c && (c.k || c.v)).map(c => ({ k: String(c.k || '').trim(), v: String(c.v || '').trim() }));
+      data.maintenance = draft.maintenance || [];
+      data.qrEnabled = draft.qrEnabled !== false;
+      data.updatedAt = now;
+      if(mode === 'create'){
+        data.createdAt = now;
+        data.holdings = [];
+      }
+
+      const photos = draft._photos || [];
+      if(photos.length > 0){
+        data.thumb = await makeThumb(photos[0].data);
+        data.photoCount = photos.length;
+        data.photosAt = now;
+      } else {
+        data.thumb = '';
+        data.photoCount = 0;
+        data.photosAt = now;
+      }
+
+      await runBatch(batch => {
+        batch.set(db.collection(COL.items).doc(draft.id), clean(data), { merge: true });
+      });
+
+      const orig = draft._orig || [];
+      const origIds = new Set(orig.map(p => p.id));
+      const currentIds = new Set(photos.map(p => p.id));
+      const toDelete = orig.filter(p => p.id && !currentIds.has(p.id));
+      const toAdd = photos.filter(p => !p.id || !origIds.has(p.id));
+
+      if(toDelete.length > 0 || toAdd.length > 0){
+        try {
+          await runBatch(batch => {
+            for(const p of toDelete){
+              batch.delete(db.collection(COL.photos).doc(p.id));
+            }
+            for(const p of toAdd){
+              const ref = p.id ? db.collection(COL.photos).doc(p.id) : db.collection(COL.photos).doc();
+              batch.set(ref, { itemId: draft.id, data: p.data, ts: p.ts || now });
+            }
+          });
+          S.photoCache.delete(draft.id);
+        } catch(phErr){
+          console.warn('Erro ao salvar fotos no Firestore:', phErr);
+        }
+      }
+
+      ctx.dirty = false;
+      liveDrafts.delete(draft.id);
+      toast(mode === 'create' ? 'Item cadastrado com sucesso!' : 'Item atualizado com sucesso!');
+      if(modal) modal.close();
+    } catch(err){
+      handleWriteError(err);
+      ctx.saving = false;
+      if(modal && modal.el) $$('.sheet-foot .btn', modal.el).forEach(b => b.disabled = false);
+    }
+  }
+
+  async function delItem(){
+    const uses = S.events.filter(ev => ev.status !== 'cancelado' && ev._m.has(draft.id));
+    const rents = activeExternalHolds(draft);
+    if(uses.length > 0 || rents.length > 0){
+      const why = uses.length ? 'está associado a ' + uses.length + ' evento(s)' : 'está alugado ou em campo';
+      if(!await confirmBox('Atenção: este item ' + why + '.\nExcluir mesmo assim?', { ok: 'Excluir', danger: true, title: 'Item em uso' })) return;
+    } else {
+      if(!await confirmBox('Excluir o item “' + (draft.name || 'Sem nome') + '”?\nIsso não pode ser desfeito.', { ok: 'Excluir', danger: true, title: 'Excluir item' })) return;
+    }
+    try {
+      await runBatch(batch => {
+        batch.delete(db.collection(COL.items).doc(draft.id));
+      });
+      try {
+        const snap = await db.collection(COL.photos).where('itemId', '==', draft.id).get();
+        if(!snap.empty){
+          await runBatch(batch => {
+            snap.docs.forEach(d => batch.delete(d.ref));
+          });
+        }
+        S.photoCache.delete(draft.id);
+      } catch(e){}
+      ctx.dirty = false;
+      liveDrafts.delete(draft.id);
+      toast('Item excluído');
+      if(modal) modal.close();
+      if(S.detail) S.detail.close();
+    } catch(err){
+      handleWriteError(err);
+    }
+  }
+
+  if(modal && modal.el){
+    modal.el.addEventListener('click', e => {
+      const b = e.target.closest('[data-role]');
+      if(!b) return;
+      if(b.dataset.role === 'save') saveItem();
+      else if(b.dataset.role === 'del') delItem();
+    });
+  }
+
+  setTimeout(() => {
+    const nameIn = container.querySelector('[data-f="name"]');
+    if(nameIn && !matchMedia('(pointer:coarse)').matches) nameIn.focus();
+  }, 60);
+
   return ctx;
 }
-async function addPhotos(ctx,files){
-  const d=ctx.draft, room=8-d._photos.length;
-  if(room<=0){toast('Limite de 8 fotos por item','warn');return;}
-  const list=files.slice(0,room); if(files.length>room) toast('Só cabem 8 fotos: as demais foram ignoradas','warn');
-  toast('Processando '+list.length+' foto(s)…','ok',1500);
-  for(const f of list){ try{ d._photos.push({id:newId(),data:await photoFromFile(f),isNew:true}); }catch(e){toast('Não consegui ler a foto '+f.name,'err');} }
-  ctx.dirty=true; ctx.renderSec('@photos');
-}
-async function saveItemDraft(ctx,again){
-  if(ctx.saving) return;
-  const d=ctx.draft, name=String(d.name||'').trim();
-  if(!name){ toast('Informe o nome do item','warn'); const i=ctx.root.querySelector('[data-f="name"]'); if(i){i.focus();i.scrollIntoView({block:'center'});} return; }
-  const isQty=d.mode==='qty', qty=Math.floor(num(d.qty));
-  if(isQty&&qty<1){ toast('A quantidade total deve ser 1 ou mais','warn'); return; }
-  if(isQty&&num(d.unavailQty)>qty){ toast('A quantidade indisponível não pode passar do total','warn'); return; }
-  const ser=norm(d.serial).trim();
-  if(ser){ const dup=S.all.find(x=>x.id!==d.id&&norm(x.serial).trim()===ser); if(dup){ toast('O nº de série já está no item “'+dup.name+'”','warn',4000); return; } }
-  if(ctx.mode==='edit'&&!d._photosLoaded){ toast('Aguarde as fotos terminarem de carregar','warn'); return; }
-  ctx.saving=true; $$('.actionbar .btn',ctx.root).forEach(b=>b.disabled=true);
-  try{
-    const now=Date.now(), data={};
-    PERSIST_KEYS.forEach(k=>{data[k]=d[k];});
-    ITEM_FIELDS.forEach(f=>{ if(f.type==='text'||f.type==='textarea') data[f.key]=String(d[f.key]||'').trim(); });
-    data.name=name; data.qty=isQty?qty:1; data.unavailQty=isQty?Math.floor(num(d.unavailQty)):0;
-    data.value=String(d.value).trim()===''?'':num(d.value);
-    if(data.status==='disponivel'||!(data.status==='manutencao'||data.status==='danificado')) data.backOn='';
-    data.tags=(d.tags||[]).slice(); data.maintenance=(d.maintenance||[]).slice();
-    data.custom=(d.custom||[]).filter(c=>String(c.k||'').trim()).map(c=>({k:String(c.k).trim(),v:String(c.v||'').trim()}));
-    data.qrEnabled=!!d.qrEnabled; data.updatedAt=now; if(ctx.mode==='create') data.createdAt=now;
-    const final=d._photos||[], orig=d._orig||[], keep=new Set(final.map(p=>p.id));
-    data.photoCount=final.length; data.thumb=final.length?await makeThumb(final[0].data):'';
-    const phChanged=final.length!==orig.length||final.some((p,i)=>p.isNew||!orig[i]||orig[i].id!==p.id);
-    data.photosAt=phChanged?now:(d.photosAt||0);
-    if(JSON.stringify(data).length>200000){ toast('Item grande demais (muitas anotações). Reduza o texto.','err',4000); return; }
-    const ref=db.collection(COL.items).doc(d.id);
-    await runBatch(b=>{
-      b.set(ref,clean(data),{merge:true});
-      orig.filter(p=>!keep.has(p.id)).forEach(p=>b.delete(photoRef(p.id)));
-      final.forEach((p,i)=>{ if(p.isNew) b.set(photoRef(p.id),{itemId:d.id,data:p.data,ts:i,createdAt:now}); else if(p.ts!==i) b.update(photoRef(p.id),{ts:i}); });
-    });
-    S.photoCache.set(d.id,final.map((p,i)=>({id:p.id,data:p.data,ts:i})));
-    liveDrafts.delete(d.id);
-    if(ctx.mode==='edit'){ ctx.dirty=false; toast('Alterações salvas'); ctx.opts.modal.close(); return; }
-    toast('Item cadastrado');
-    if(!again){ ctx.dirty=false; if(ctx.opts.modal) ctx.opts.modal.close(); return; }
-    const next=newDraft();
-    if(again){
-      ['model','brand','mode','qty','unavailQty','status','backOn','condition','location','acquiredOn','value','supplier','notes','qrEnabled','name'].forEach(k=>{next[k]=d[k];});
-      next.tags=(d.tags||[]).slice(); next.custom=clone(d.custom||[]);
-    }
-    S.createDraft=next; ctx.opts.remount&&ctx.opts.remount();
-    const sc=ctx.opts.scroller; if(sc) sc.scrollTop=0;
-    if(again){ const i=$('#modal-root [data-f="name"]'); if(i){i.focus();i.select();} }
-  }catch(e){ handleWriteError(e); }
-  finally{ ctx.saving=false; $$('.actionbar .btn',ctx.root).forEach(b=>b.disabled=false); }
-}
-async function deleteItemFlow(ctx){
-  const d=ctx.draft;
-  const uses=S.events.filter(ev=>ev._m.has(d.id));
-  const msg='Excluir “'+d.name+'” de vez?'+(uses.length?'\n\nEle será removido também de '+uses.length+' evento(s).':'')+'\n\nIsso não pode ser desfeito.';
-  if(!await confirmBox(msg,{ok:'Excluir item',danger:true,title:'Excluir item'})) return;
-  try{
-    let photos=[]; try{ photos=await getPhotos(d.id,true); }catch(e){}
-    await runBatch(b=>{
-      b.delete(db.collection(COL.items).doc(d.id));
-      photos.forEach(p=>b.delete(photoRef(p.id)));
-      uses.forEach(ev=>b.update(db.collection(COL.events).doc(ev.id),{alloc:ev.alloc.filter(a=>a.itemId!==d.id),updatedAt:Date.now()}));
-    });
-    S.photoCache.delete(d.id); liveDrafts.delete(d.id);
-    toast('Item excluído'); ctx.dirty=false;
-    if(S.detail) S.detail.close();
-    ctx.opts.modal.close();
-  }catch(e){ handleWriteError(e); }
-}
+
 function openItemEdit(id){
   const it=S.itemsById.get(id); if(!it) return;
   const draft=draftFromItem(it); let ctx=null;
@@ -2195,55 +2485,137 @@ async function holdingAction(a,itemId,hid){
 }
 
 /* ---------- Alugar / Vender ---------- */
+/* ---------- Atribuir headset diretamente a um evento ---------- */
+function openAllocateToEvent(itemId){
+  const it = S.itemsById.get(itemId);
+  if(!it){ toast('Equipamento não encontrado','warn'); return; }
+  const t = todayISO();
+  const evList = S.events.filter(e => e.status !== 'cancelado').sort((a,b) => (a.end>=t ? 0 : 1) - (b.end>=t ? 0 : 1) || b.start.localeCompare(a.start));
+  if(!evList.length){ toast('Nenhum evento ativo cadastrado. Crie um evento primeiro na aba Eventos.','warn',4000); return; }
+  const m = openModal({
+    title: 'Atribuir a Evento: ' + it.name,
+    cls: 'small',
+    foot: true,
+    body: '<div class="stack">' +
+      '<div class="arow" style="margin-bottom:8px">' +
+        '<div><b>' + esc(it.name) + '</b><br><small class="dim">' + esc([it.model, it.serial ? 'S/N ' + it.serial : ''].filter(Boolean).join(' · ')) + '</small></div>' +
+        '<span class="badge st-disponivel">Disponível</span>' +
+      '</div>' +
+      '<div class="field"><label for="al-ev">Escolha o evento de destino *</label>' +
+        '<select id="al-ev">' +
+          evList.map(ev => {
+            const already = (ev.alloc || []).find(a => a.itemId === it.id);
+            const inEvText = already ? ' (já tem ' + already.qty + ' un.)' : '';
+            return '<option value="' + esc(ev.id) + '">' + esc(ev.name) + ' · ' + fmtShort(ev.start) + (ev.place ? ' (' + esc(ev.place) + ')' : '') + inEvText + '</option>';
+          }).join('') +
+        '</select>' +
+      '</div>' +
+      (it.mode === 'qty' ? '<div class="field"><label for="al-qty">Quantidade a levar</label><input type="number" id="al-qty" min="1" max="' + totalQty(it) + '" value="1"></div>' : '') +
+      '<div class="dim" style="font-size:12px">O headset será incluído diretamente na lista de equipamentos deste evento e ficará alocado.</div>' +
+    '</div>'
+  });
+  m.foot.innerHTML = '<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-x="al-save">✓ Confirmar e Alocar no Evento</button>';
+  m.el.addEventListener('click', async e => {
+    if(!e.target.closest('[data-x="al-save"]')) return;
+    const evSel = $('#al-ev', m.el);
+    const evId = evSel ? evSel.value : '';
+    const ev = S.events.find(x => x.id === evId);
+    if(!ev) return;
+    const qtyInp = $('#al-qty', m.el);
+    const qty = qtyInp ? Math.max(1, Math.floor(num(qtyInp.value))) : 1;
+    const alloc = clone(ev.alloc || []);
+    const existing = alloc.find(a => a.itemId === it.id);
+    if(existing){ existing.qty = num(existing.qty) + qty; }
+    else { alloc.push({ itemId: it.id, qty: qty, planId: '' }); }
+    try {
+      await runBatch(b => b.update(db.collection(COL.events).doc(ev.id), { alloc: clean(alloc), updatedAt: Date.now() }));
+      toast('Headset “' + it.name + '” alocado no evento “' + ev.name + '” com sucesso!');
+      m.close();
+      if(S.detail) S.detail.close();
+    } catch(err) { handleWriteError(err); }
+  });
+}
+
 function openMove(opts){
   opts=opts||{};
   if(!db){ toast('Firebase indisponível','err'); return; }
   if(S.contactsError==='permission-denied'){ showRulesHelp(); return; }
-  const st={kind:opts.kind==='vendido'?'vendido':'alugado',contactId:opts.contactId||'',from:todayISO(),until:'',date:todayISO(),unit:'',note:'',sel:new Map(),q:'',tag:'all',tmpC:new Map(),saving:false};
+  const defaultKind=opts.kind||'em_campo';
+  const st={kind:defaultKind,contactId:opts.contactId||'',from:todayISO(),until:'',date:todayISO(),unit:'',note:'',sel:new Map(),q:'',tag:'all',tmpC:new Map(),saving:false};
   if(opts.itemId&&S.itemsById.has(opts.itemId)) st.sel.set(opts.itemId,1);
   const m=openModal({title:'',cls:'wide',foot:true,noBackdrop:true,body:''});
   const tags=tagIndex();
   m.body.innerHTML=
-   '<div class="sect"><div class="row" style="margin-bottom:10px"><button type="button" class="chip" data-v="kind" data-kind="alugado">Alugar</button><button type="button" class="chip" data-v="kind" data-kind="vendido">Vender</button></div>'+
+   '<div class="sect"><div class="row" style="margin-bottom:10px">'+
+     '<button type="button" class="chip" data-v="kind" data-kind="em_campo">🎒 Em campo (Colaborador)</button>'+
+     '<button type="button" class="chip" data-v="kind" data-kind="alugado">◈ Alugar</button>'+
+     '<button type="button" class="chip" data-v="kind" data-kind="vendido">◉ Vender</button>'+
+   '</div>'+
    '<div class="fgrid">'+
-    '<div class="field full"><label for="mv-contact">Contato *</label><div class="row"><select id="mv-contact" style="flex:1;min-width:0"></select><button type="button" class="btn sm blue" data-v="cnew">+ Novo contato</button></div></div>'+
-    '<div class="field mv-rent"><label for="mv-from">Início</label><input type="date" id="mv-from"></div>'+
-    '<div class="field mv-rent"><label for="mv-until">Devolução prevista</label><input type="date" id="mv-until"><span class="hint">Em branco = sem prazo; continua fora até você dar baixa</span></div>'+
+    '<div class="field full"><label for="mv-contact" id="mv-contact-l">Colaborador / Responsável *</label><div class="row"><select id="mv-contact" style="flex:1;min-width:0"></select><button type="button" class="btn sm blue" data-v="cnew">+ Novo contato</button></div></div>'+
+    '<div class="field mv-loan"><label for="mv-from">Data de saída</label><input type="date" id="mv-from"></div>'+
+    '<div class="field mv-loan"><label for="mv-until">Previsão de retorno</label><input type="date" id="mv-until"><span class="hint">Opcional. Sem prazo = continua em campo até devolver</span></div>'+
     '<div class="field mv-sale"><label for="mv-date">Data da venda</label><input type="date" id="mv-date"></div>'+
-    '<div class="field"><label for="mv-unit" id="mv-unit-l">Valor por unidade (R$)</label><input type="number" id="mv-unit" min="0" step="0.01" inputmode="decimal"></div>'+
-    '<div class="field full"><label for="mv-note">Observação</label><input type="text" id="mv-note" autocomplete="off" placeholder="Ex.: caução, forma de pagamento, evento…"></div></div>'+
+    '<div class="field mv-price"><label for="mv-unit" id="mv-unit-l">Valor por unidade (R$)</label><input type="number" id="mv-unit" min="0" step="0.01" inputmode="decimal"></div>'+
+    '<div class="field full"><label for="mv-note" id="mv-note-l">Motivo / Observação</label><input type="text" id="mv-note" autocomplete="off" placeholder="Ex.: testes, demonstração, uso com colaborador..."></div></div>'+
    '<div id="mv-total" class="dim" style="margin-top:8px;font-size:13px"></div></div>'+
    '<div class="sect"><div class="h3" style="margin-top:0">Equipamentos selecionados</div><div id="mv-sel"></div></div>'+
    '<div class="sect"><div class="h3" style="margin-top:0">Escolher equipamento</div><div class="toolbar"><div class="grow1"><input type="search" id="mv-q" placeholder="Buscar por nome, modelo ou série…" aria-label="Buscar equipamento"></div><select id="mv-tag" style="width:auto" aria-label="Categoria"><option value="all">Todas as categorias</option>'+tags.map(t=>'<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>').join('')+'</select></div><div class="pick" id="mv-pick"></div></div>';
   m.foot.innerHTML='<button class="btn" data-mclose>Cancelar</button><button class="btn pri" data-v="save"></button>';
   const isRent=()=>st.kind==='alugado';
+  const isField=()=>st.kind==='em_campo'||st.kind==='campo';
+  const isLoan=()=>isRent()||isField();
   const win=()=>{ const a=st.from||todayISO(); return [a,st.until&&st.until>=a?st.until:a]; };
   /* quantas unidades do item podem sair agora */
   const free=it=>{
-    if(isRent()){ const [a,b]=win(); return itemAvail(it,a,b).free; }
+    if(isLoan()){ const [a,b]=win(); return itemAvail(it,a,b).free; }
     return Math.max(0,totalQty(it)-rentedOn(it,todayISO()));
   };
   const why=it=>{
-    if(isRent()) return itemAvail(it,...win()).reason;
-    return rentedOn(it,todayISO())?'alugado no momento':'';
+    if(isLoan()) return itemAvail(it,...win()).reason;
+    return rentedOn(it,todayISO())?'alocado no momento':'';
   };
   const fillContacts=()=>{
     const opts2=S.contacts.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt'));
     if(st.contactId&&!S.contactsById.has(st.contactId)&&st.tmpC.has(st.contactId)) opts2.push(Object.assign({id:st.contactId},st.tmpC.get(st.contactId)));
-    $('#mv-contact',m.el).innerHTML='<option value="">— escolher contato —</option>'+opts2.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name+(c.company?' — '+c.company:''))+'</option>').join('');
+    $('#mv-contact',m.el).innerHTML='<option value="">— escolher pessoa / colaborador —</option>'+opts2.map(c=>'<option value="'+esc(c.id)+'">'+esc(c.name+(c.company?' — '+c.company:''))+'</option>').join('');
     $('#mv-contact',m.el).value=st.contactId;
   };
   const renderKind=()=>{
-    m.setTitle(isRent()?'Alugar equipamento':'Vender equipamento');
+    if(isField()){
+      m.setTitle('Emprestar para Colaborador (Em campo)');
+      $('#mv-contact-l',m.el).textContent='Colaborador / Responsável *';
+      $('#mv-note-l',m.el).textContent='Motivo / Observação';
+      $('#mv-note',m.el).placeholder='Ex.: testes, desenvolvimento, uso em campo, reserva técnica...';
+      $('[data-v="save"]',m.el).textContent='Registrar em campo';
+    } else if(isRent()){
+      m.setTitle('Alugar equipamento');
+      $('#mv-contact-l',m.el).textContent='Cliente / Locatário *';
+      $('#mv-note-l',m.el).textContent='Observações do aluguel';
+      $('#mv-note',m.el).placeholder='Ex.: caução, evento, forma de pagamento...';
+      $('#mv-unit-l',m.el).textContent='Valor do aluguel por unidade (R$)';
+      $('[data-v="save"]',m.el).textContent='Registrar aluguel';
+    } else {
+      m.setTitle('Vender equipamento');
+      $('#mv-contact-l',m.el).textContent='Comprador *';
+      $('#mv-note-l',m.el).textContent='Observações da venda';
+      $('#mv-note',m.el).placeholder='Ex.: nota fiscal, pagamento à vista...';
+      $('#mv-unit-l',m.el).textContent='Valor da venda por unidade (R$)';
+      $('[data-v="save"]',m.el).textContent='Registrar venda';
+    }
     $$('[data-v="kind"]',m.el).forEach(b=>b.classList.toggle('on',b.dataset.kind===st.kind));
-    $$('.mv-rent',m.el).forEach(x=>x.classList.toggle('hide',!isRent())); $$('.mv-sale',m.el).forEach(x=>x.classList.toggle('hide',isRent()));
-    $('#mv-unit-l',m.el).textContent=isRent()?'Valor do aluguel por unidade (R$)':'Valor da venda por unidade (R$)';
-    $('[data-v="save"]',m.el).textContent=isRent()?'Registrar aluguel':'Registrar venda';
+    $$('.mv-loan',m.el).forEach(x=>x.classList.toggle('hide',!isLoan()));
+    $$('.mv-sale',m.el).forEach(x=>x.classList.toggle('hide',isLoan()));
+    $$('.mv-price',m.el).forEach(x=>x.classList.toggle('hide',isField()));
     renderAll();
   };
   const renderTotal=()=>{
     const units=Array.from(st.sel.values()).reduce((s,q)=>s+q,0), u=num(st.unit);
-    $('#mv-total',m.el).textContent=units?units+' unidade(s)'+(u?' × '+money(u)+' = '+money(u*units):''):'';
+    if(isField()){
+      $('#mv-total',m.el).textContent=units?units+' unidade(s) selecionada(s) para empréstimo à equipe':'';
+    } else {
+      $('#mv-total',m.el).textContent=units?units+' unidade(s)'+(u?' × '+money(u)+' = '+money(u*units):''):'';
+    }
   };
   const renderSelInner=()=>{
     const box=$('#mv-sel',m.el);
@@ -2302,13 +2674,13 @@ function openMove(opts){
   });
   async function save(){
     if(st.saving) return;
-    if(!st.contactId){ toast('Escolha o contato','warn'); $('#mv-contact',m.el).focus(); return; }
+    if(!st.contactId){ toast('Escolha a pessoa / colaborador','warn'); $('#mv-contact',m.el).focus(); return; }
     if(!st.sel.size){ toast('Escolha ao menos um equipamento','warn'); return; }
-    const rent=isRent(), date=rent?st.from:st.date;
-    if(!date){ toast(rent?'Informe a data de início':'Informe a data da venda','warn'); return; }
-    if(rent&&st.until&&st.until<st.from){ toast('A devolução não pode ser antes do início','warn'); return; }
+    const loan=isLoan(), date=loan?st.from:st.date;
+    if(!date){ toast('Informe a data','warn'); return; }
+    if(loan&&st.until&&st.until<st.from){ toast('A devolução não pode ser antes do início','warn'); return; }
     for(const [id,q] of st.sel){ const it=S.itemsById.get(id); if(!it){ toast('Um item escolhido não existe mais','err'); return; } const f=free(it); if(q>f){ toast('“'+it.name+'”: '+(f?'só '+f+' disponível(is)':'indisponível'+(why(it)?' ('+why(it)+')':'')),'warn',4500); return; } }
-    if(!rent){
+    if(!loan){
       const t=todayISO(), inEv=Array.from(st.sel.keys()).filter(id=>S.events.some(ev=>ev.status!=='cancelado'&&ev.end>=t&&ev._m.has(id)));
       if(inEv.length&&!await confirmBox(inEv.length+' item(ns) estão em eventos futuros. Vendê-los vai gerar conflito nesses eventos.\nRegistrar a venda mesmo assim?',{ok:'Registrar venda',title:'Itens em eventos'})) return;
     }
@@ -2318,12 +2690,19 @@ function openMove(opts){
       await runBatch(bt=>{
         for(const [id,q] of st.sel){
           const it=S.itemsById.get(id); units+=q;
-          const h={id:Math.random().toString(36).slice(2,10),kind:st.kind,contactId:st.contactId,qty:q,from:rent?st.from:'',until:rent?st.until:'',date:rent?'':st.date,price:u?+(u*q).toFixed(2):'',note:st.note.trim(),returnedOn:'',createdAt:now};
+          const h={id:Math.random().toString(36).slice(2,10),kind:st.kind,contactId:st.contactId,qty:q,from:loan?st.from:'',until:loan?st.until:'',date:loan?'':st.date,price:(loan&&isField())?'':(u?+(u*q).toFixed(2):''),note:st.note.trim(),returnedOn:'',createdAt:now};
           bt.update(db.collection(COL.items).doc(id),{holdings:clean((it.holdings||[]).concat([h])),updatedAt:now});
         }
       });
       const cn=(S.contactsById.get(st.contactId)||st.tmpC.get(st.contactId)||{}).name||'o contato';
-      toast((rent?'Aluguel registrado: ':'Venda registrada: ')+units+' un. — '+cn,'ok',3500); m.close();
+      if(isField()){
+        toast('Em campo: '+units+' un. com colaborador '+cn,'ok',3500);
+      } else if(isRent()){
+        toast('Aluguel registrado: '+units+' un. — '+cn,'ok',3500);
+      } else {
+        toast('Venda registrada: '+units+' un. — '+cn,'ok',3500);
+      }
+      m.close();
     }catch(err){ handleWriteError(err); st.saving=false; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=false); }
   }
 }
