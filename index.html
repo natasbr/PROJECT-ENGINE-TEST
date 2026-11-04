@@ -6,6 +6,9 @@
 <meta name="theme-color" content="#000000">
 <script>try{document.documentElement.dataset.theme=localStorage.getItem("vrm_theme")||""}catch(e){}</script>
 <title>VR Estoque</title>
+<meta name="description" content="Sistema de gestão de estoque e equipamentos VR, eventos e contatos.">
+<meta property="og:title" content="VR Estoque">
+<meta property="og:description" content="Sistema de gestão de estoque e equipamentos VR, eventos e contatos.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Ctext x='32' y='42' font-family='monospace' font-size='30' font-weight='bold' fill='%2300ff00' text-anchor='middle'%3EVR%3C/text%3E%3C/svg%3E">
 <style>
 :root{
@@ -950,8 +953,9 @@ const modalStack=[];
 function openModal(o){
   const prev=document.activeElement;
   const el=document.createElement('div'); el.className='modal';
-  el.innerHTML='<div class="sheet '+(o.cls||'')+'" role="dialog" aria-modal="true"><div class="sheet-head"><h2></h2><button class="btn sm" data-mclose aria-label="Fechar">✕</button></div><div class="sheet-body"></div>'+(o.foot?'<div class="sheet-foot"></div>':'')+'</div>';
-  const m={el,body:$('.sheet-body',el),foot:$('.sheet-foot',el),opts:o};
+  el.innerHTML='<div class="sheet '+(o.cls||'')+'" role="dialog" aria-modal="true"><div class="sheet-head"><h2></h2><button class="btn sm" data-mclose aria-label="Fechar">✕</button></div><div class="sheet-body"></div><div class="sheet-foot'+(o.foot?'':' hide')+'"></div></div>';
+  const footEl=$('.sheet-foot',el);
+  const m={el,body:$('.sheet-body',el),foot:footEl,opts:o};
   $('h2',el).textContent=o.title||'';
   m.setTitle=t=>{$('h2',el).textContent=t;};
   m.close=()=>{
@@ -965,7 +969,8 @@ function openModal(o){
   el.addEventListener('mousedown',e=>{ if(e.target===el && !o.noBackdrop) m.request(); });
   el.addEventListener('click',e=>{ if(e.target.closest('[data-mclose]')) m.request(); });
   if(o.body!=null) m.body.innerHTML=o.body;
-  if(typeof o.foot==='string') m.foot.innerHTML=o.foot;
+  if(typeof o.foot==='string'){ m.foot.innerHTML=o.foot; m.foot.classList.remove('hide'); }
+  else if(o.foot){ m.foot.classList.remove('hide'); }
   $('#modal-root').appendChild(el); modalStack.push(m);
   document.documentElement.classList.add('lock');
   return m;
@@ -1669,6 +1674,7 @@ function mountItemForm(container, opts){
   const uid = Math.random().toString(36).slice(2, 7);
 
   if(modal && modal.foot){
+    modal.foot.classList.remove('hide');
     if(mode === 'create'){
       modal.foot.innerHTML = '<button type="button" class="btn" data-mclose>Cancelar</button><button type="button" class="btn pri" data-role="save">Cadastrar item</button>';
     } else {
@@ -1816,9 +1822,25 @@ function mountItemForm(container, opts){
     if(secName === '@qr') fillQrSlots(container);
   };
 
+  function renderActionBar(){
+    if(mode === 'create'){
+      return '<div class="actionbar" style="justify-content:flex-end;margin-top:14px">' +
+        '<button type="button" class="btn" data-mclose>Cancelar</button>' +
+        '<button type="button" class="btn pri" data-role="save">Cadastrar item</button>' +
+        '</div>';
+    } else {
+      return '<div class="actionbar" style="justify-content:space-between;margin-top:14px">' +
+        '<button type="button" class="btn danger" data-role="del">Excluir item</button>' +
+        '<div class="row">' +
+        '<button type="button" class="btn" data-mclose>Cancelar</button>' +
+        '<button type="button" class="btn pri" data-role="save">Salvar alterações</button>' +
+        '</div></div>';
+    }
+  }
+
   function renderAll(){
     const top = scroller ? scroller.scrollTop : 0;
-    container.innerHTML = dls + FORM_LAYOUT.map(renderSection).join('');
+    container.innerHTML = dls + FORM_LAYOUT.map(renderSection).join('') + renderActionBar();
     fillQrSlots(container);
     if(scroller) scroller.scrollTop = top;
   }
@@ -1926,6 +1948,11 @@ function mountItemForm(container, opts){
 
   // Handle clicks within container
   container.addEventListener('click', e => {
+    const roleBtn = e.target.closest('[data-role]');
+    if(roleBtn){
+      if(roleBtn.dataset.role === 'save'){ saveItem(); return; }
+      if(roleBtn.dataset.role === 'del'){ delItem(); return; }
+    }
     const tagAdd = e.target.closest('[data-tag-add]');
     if(tagAdd){
       addTag(tagAdd.dataset.tagAdd);
@@ -2112,7 +2139,7 @@ function mountItemForm(container, opts){
 function openItemEdit(id){
   const it=S.itemsById.get(id); if(!it) return;
   const draft=draftFromItem(it); let ctx=null;
-  const m=openModal({title:'Editar: '+it.name,cls:'wide',noBackdrop:true,body:'',
+  const m=openModal({title:'Editar: '+it.name,cls:'wide',foot:true,noBackdrop:true,body:'',
     beforeClose:async()=>!ctx||!ctx.dirty||await confirmBox('Descartar as alterações deste item?',{ok:'Descartar',danger:true}),
     onClose:()=>liveDrafts.delete(draft.id)});
   ctx=mountItemForm(m.body,{draft,mode:'edit',scroller:m.body,modal:m});
@@ -2123,7 +2150,7 @@ function openItemEdit(id){
 }
 function openItemCreate(){
   let ctx=null; S.createDraft=newDraft();
-  const m=openModal({title:'Cadastrar item',cls:'wide',noBackdrop:true,body:'',
+  const m=openModal({title:'Cadastrar item',cls:'wide',foot:true,noBackdrop:true,body:'',
     beforeClose:async()=>!ctx||!ctx.dirty||await confirmBox('Descartar o cadastro deste item?',{ok:'Descartar',danger:true}),
     onClose:()=>{ if(S.createDraft) liveDrafts.delete(S.createDraft.id); S.createCtx=null; }});
   const mount=()=>{ m.body.innerHTML='<div></div>'; ctx=S.createCtx=mountItemForm(m.body.firstChild,{draft:S.createDraft,mode:'create',scroller:m.body,modal:m,remount:mount}); };
@@ -2402,7 +2429,7 @@ function openEvent(id,presetDate){
         check:Object.fromEntries(draft.alloc.filter(a=>draft.check[a.itemId]&&Object.keys(draft.check[a.itemId]).length).map(a=>[a.itemId,draft.check[a.itemId]])),
         contacts:draft.contacts.filter(c=>c.contactId).map(c=>({contactId:c.contactId,role:String(c.role||'').trim()})),updatedAt:now};
       if(isNew) data.createdAt=now;
-      await runBatch(bt=>bt.set(db.collection(COL.events).doc(draft.id),data,{merge:true}));
+      await runBatch(bt=>bt.set(db.collection(COL.events).doc(draft.id),clean(data),{merge:true}));
       ctx.dirty=false; toast(isNew?'Evento criado':'Evento salvo'); m.close();
     }catch(err){ handleWriteError(err); ctx.saving=false; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=false); }
   }
