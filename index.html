@@ -648,6 +648,42 @@ function getItemLiveStatus(it){
   return {state:'disponivel',label:'Disponível',detail:'Livre no estoque',badgeCls:'st-disponivel'};
 }
 
+/* calcula quantos headsets VR específicos foram alocados em ev.alloc */
+function evVRAlloc(ev){
+  let c=0;
+  for(const a of (ev.alloc||[])){
+    const it=S.itemsById.get(a.itemId);
+    if(it && isVR(it)) c += num(a.qty);
+  }
+  return c;
+}
+
+/* calcula a demanda de headsets VR genéricos (sem aparelho individual vinculado) para o dia d */
+function genericVRReserved(d,ov){
+  let sum=0;
+  const t=todayISO();
+  for(const ev of S.events){
+    if(ev.status==='cancelado') continue;
+    if(ov && ov.exclude===ev.id) continue;
+    const req=Math.max(0,Math.floor(num(ev.vrQty))||0);
+    if(!req) continue;
+    const allocVR=evVRAlloc(ev);
+    const unalloc=Math.max(0,req-allocVR);
+    if(!unalloc) continue;
+
+    const isReturned=!!(ev.check && (ev.check._returned || (allocVR>0 && (ev.alloc||[]).filter(a=>{const it=S.itemsById.get(a.itemId);return it&&isVR(it);}).every(a=>ev.check[a.itemId]&&ev.check[a.itemId].r))));
+    if(isReturned) continue;
+
+    if(d===t){
+      if(ev.start<=t && (ev.end>=t || !isReturned)) sum+=unalloc;
+    } else {
+      if(d>=ev.start && d<=ev.end) sum+=unalloc;
+    }
+  }
+  if(ov && ov.extraVR && d>=ov.range[0] && d<=ov.range[1]) sum+=ov.extraVR;
+  return sum;
+}
+
 /* quantas unidades do item estão reservadas em eventos no dia d.
    no dia de hoje, eventos que já começaram ou encerraram mas não tiveram baixa contam como ocupados.
    no calendário/futuro, conta conforme o agendamento planejado (start até end). */
@@ -677,6 +713,19 @@ function dayStats(items,d,ov){
     const tot=totalQty(it), b=usableBase(it,d), rent=Math.min(rentedOn(it,d),b), us=b-rent, used=Math.min(reservedFor(it.id,d,ov),us);
     T+=tot; U+=tot-b; L+=rent; R+=used; F+=us-used;
   }
+  const vrItems = items.filter(isVR);
+  if(vrItems.length > 0){
+    const genVR = genericVRReserved(d, ov);
+    if(genVR > 0){
+      const allVRTotal = S.items.filter(isVR).reduce((s,i)=>s+totalQty(i),0);
+      const curVRTotal = vrItems.reduce((s,i)=>s+totalQty(i),0);
+      const ratio = allVRTotal > 0 ? (curVRTotal / allVRTotal) : 1;
+      const share = Math.round(genVR * ratio);
+      const take = Math.min(F, share);
+      F -= take;
+      R += share;
+    }
+  }
   return {T,U,L,R,F};
 }
 /* pior dia do intervalo (o que tem menos itens livres) */
@@ -693,9 +742,18 @@ function eventConflicts(ev){
     const bad=eachDay(ev.start,ev.end).filter(d=>reservedFor(itemId,d)>usableQty(it,d));
     if(bad.length) out.push({itemId,days:bad});
   }
+  if(ev.vrQty > 0){
+    const vrItems = S.items.filter(isVR);
+    const badVR = eachDay(ev.start, ev.end).filter(d => {
+      const totUsable = vrItems.reduce((s,i)=>s+usableQty(i,d),0);
+      const totReserved = vrItems.reduce((s,i)=>s+reservedFor(i.id,d),0) + genericVRReserved(d);
+      return totReserved > totUsable;
+    });
+    if(badVR.length) out.push({itemId:'__vr_generic', isVRDeficit:true, days:badVR});
+  }
   return out;
 }
-const evCount = ev=>(ev.alloc||[]).reduce((s,a)=>s+num(a.qty),0);
+const evCount = ev => (ev.alloc||[]).reduce((s,a)=>s+num(a.qty),0) + Math.max(0, (ev.vrQty||0) - evVRAlloc(ev));
 function planStats(ev){ let need=0,got=0,open=0; for(const l of ev.plan||[]){ need+=l.qty; const f=Math.min(l.qty,(ev.alloc||[]).reduce((s,a)=>s+(a.planId===l.id?num(a.qty):0),0)); got+=l.done?l.qty:f; if(!(l.done||f>=l.qty)) open++; } return {need,got,open,n:(ev.plan||[]).length}; }
 const CK=[['s','Separado'],['c','Conferido'],['l','Carregado'],['r','Devolvido'],['i','Inspecionado']];
 const planFilled=(ev,l)=>(ev.alloc||[]).reduce((t,a)=>t+(a.planId===l.id?num(a.qty):0),0);
@@ -715,6 +773,7 @@ function evGroups(ev){ const m=new Map(); for(const a of ev.alloc||[]){ const it
 const evContacts=ev=>(ev.contacts||[]).map(c=>{const ci=S.contactsById.get(c.contactId)||{}; return {name:ci.name||'(contato removido)',role:c.role||'',phone:ci.phone||'',company:ci.company||''};});
 function evText(ev){
   const L=['*'+(ev.name||'Evento')+'*','📅 '+fmtRange(ev.start,ev.end)+(evTime(ev)?' ⏰ '+evTime(ev):'')+(ev.place?'  📍 '+ev.place:'')+(ev.client?'\n🏢 '+ev.client:'')];
+  if(ev.vrQty) L.push('🥽 *Headsets VR reservados*: '+ev.vrQty+' un.');
   const cs=evContacts(ev).map(c=>'• '+c.name+(c.role?' ('+c.role+')':'')+(c.phone?' — '+c.phone:'')); if(cs.length) L.push('','👥 *Contatos*',...cs);
   const pl=(ev.plan||[]).map(l=>{const f=planFilled(ev,l); return '• '+l.qty+'× '+l.label+(l.done||f>=l.qty?' ✔':' ('+f+'/'+l.qty+')');}); if(pl.length) L.push('','📝 *Planejamento*',...pl);
   const g=Array.from(evGroups(ev),([k,n])=>'• '+n+'× '+k); if(g.length) L.push('','🎧 *Equipamentos confirmados*',...g);
@@ -726,7 +785,7 @@ function evReportHTML(ev){
   const rows=(ev.alloc||[]).map(a=>{const it=S.itemsById.get(a.itemId), c=ck[a.itemId]||{}; return '<tr><td>'+e(it?it.name:'(item removido)')+'</td><td>'+e(it?groupKey(it):'')+'</td><td>'+e((it&&it.serial)||'')+'</td><td class="c">'+num(a.qty)+'</td>'+CK.map(([k])=>'<td class="c">'+(c[k]?'☑':'☐')+'</td>').join('')+'<td class="c">'+(c.d?'⚠':'')+'</td></tr>';}).join('');
   const cs=evContacts(ev).map(c=>'<tr><td>'+e(c.name)+'</td><td>'+e(c.role)+'</td><td>'+e(c.company)+'</td><td>'+e(c.phone)+'</td></tr>').join('');
   const pl=(ev.plan||[]).map(l=>{const f=planFilled(ev,l); return '<tr><td class="c">'+l.qty+'</td><td>'+e(l.label)+(l.kit?' <small>('+e(l.kit)+')</small>':'')+'</td><td>'+(l.done?'Resolvido (fora do inventário)':f+'/'+l.qty+' separados')+'</td></tr>';}).join('');
-  return '<div class="rep"><h1>'+e(ev.name||'Evento')+'</h1><div>'+e(fmtRange(ev.start,ev.end))+(evTime(ev)?' · '+e(evTime(ev)):'')+(ev.place?' · '+e(ev.place):'')+(ev.client?' · Cliente: '+e(ev.client):'')+' · '+e(label(EV_STATUS,ev.status))+'</div>'+
+  return '<div class="rep"><h1>'+e(ev.name||'Evento')+'</h1><div>'+e(fmtRange(ev.start,ev.end))+(evTime(ev)?' · '+e(evTime(ev)):'')+(ev.place?' · '+e(ev.place):'')+(ev.client?' · Cliente: '+e(ev.client):'')+(ev.vrQty?' · 🥽 Headsets VR: '+e(ev.vrQty):'')+' · '+e(label(EV_STATUS,ev.status))+'</div>'+
    (cs?'<h2>Contatos</h2><table><tr><th>Nome</th><th>Função</th><th>Empresa</th><th>Telefone</th></tr>'+cs+'</table>':'')+
    (pl?'<h2>Lista de planejamento</h2><table><tr><th class="c">Qtd</th><th>Item</th><th>Situação</th></tr>'+pl+'</table>':'')+
    '<h2>Equipamentos confirmados e checklist</h2>'+(rows?'<table><tr><th>Item</th><th>Modelo</th><th>Série</th><th class="c">Qtd</th>'+CK.map(([k,n])=>'<th class="c">'+n.slice(0,5)+'.</th>').join('')+'<th class="c">Defeito</th></tr>'+rows+'</table>':'<div>Nenhum item separado.</div>')+
@@ -778,7 +837,15 @@ function evPhase(ev){const t=todayISO();return ev.end<t?'passado':ev.start>t?'pr
 const PHASE_LABEL={passado:'Passado',proximo:'Próximo',andamento:'Em andamento'};
 function evSummary(ev,max=3){
   const m=new Map();
-  for(const a of ev.alloc||[]){const it=S.itemsById.get(a.itemId);const k=it?groupKey(it):'(item removido)';m.set(k,(m.get(k)||0)+num(a.qty));}
+  let allocVR=0;
+  for(const a of ev.alloc||[]){
+    const it=S.itemsById.get(a.itemId);
+    const k=it?groupKey(it):'(item removido)';
+    m.set(k,(m.get(k)||0)+num(a.qty));
+    if(it&&isVR(it)) allocVR+=num(a.qty);
+  }
+  const unallocVR=Math.max(0,(ev.vrQty||0)-allocVR);
+  if(unallocVR>0) m.set('VR genérico',unallocVR);
   const arr=Array.from(m,([k,n])=>n+'× '+k);
   return arr.length>max?arr.slice(0,max).join(' · ')+' · +'+(arr.length-max):arr.join(' · ');
 }
@@ -839,7 +906,8 @@ function normItem(id,d){
   return it;
 }
 function normEvent(id,d){
-  const ev=Object.assign({name:'',client:'',place:'',start:todayISO(),end:todayISO(),status:'planejado',notes:'',alloc:[],contacts:[]},d||{}); ev.id=id;
+  const ev=Object.assign({name:'',client:'',place:'',start:todayISO(),end:todayISO(),status:'planejado',notes:'',vrQty:0,alloc:[],contacts:[]},d||{}); ev.id=id;
+  ev.vrQty=Math.max(0,Math.floor(num(ev.vrQty))||0);
   if(!Array.isArray(ev.alloc)) ev.alloc=[];
   if(!Array.isArray(ev.contacts)) ev.contacts=[];
   ev.plan=(Array.isArray(ev.plan)?ev.plan:[]).filter(l=>l&&l.label).map(l=>({id:l.id||Math.random().toString(36).slice(2,9),label:String(l.label),qty:Math.max(1,Math.floor(num(l.qty))||1),done:!!l.done,kit:l.kit||''}));
@@ -1185,6 +1253,10 @@ function renderGeral(){
         freeVR += tot;
       }
     }
+    const genToday = genericVRReserved(t);
+    const takeGen = Math.min(freeVR, genToday);
+    freeVR -= takeGen;
+    inEventsVR += genToday;
   } else {
     const st = rangeStats(vrHeadsets, a, b);
     freeVR = st.F;
@@ -1198,16 +1270,23 @@ function renderGeral(){
   // 1. Eventos encerrados com baixa pendente (com botão de ação rápida de dar baixa!)
   const unreturnedEvs = S.events.filter(ev => {
     if(ev.status==='cancelado' || ev.end>=t) return false;
-    return (ev.alloc||[]).some(a => {
+    if(ev.check && ev.check._returned) return false;
+    const hasAllocVR = (ev.alloc||[]).some(a => {
       const it = S.itemsById.get(a.itemId);
       return it && isVR(it) && !(ev.check && ev.check[a.itemId] && ev.check[a.itemId].r);
     });
+    const allocVR = evVRAlloc(ev);
+    const hasGenericVR = (ev.vrQty > 0) && (ev.vrQty > allocVR);
+    return hasAllocVR || hasGenericVR;
   });
   unreturnedEvs.forEach(ev => {
-    const unreturnedCount = (ev.alloc||[]).filter(a => {
+    const allocUnreturned = (ev.alloc||[]).filter(a => {
       const it = S.itemsById.get(a.itemId);
       return it && isVR(it) && !(ev.check && ev.check[a.itemId] && ev.check[a.itemId].r);
     }).reduce((acc, a) => acc + num(a.qty), 0);
+    const allocVR = evVRAlloc(ev);
+    const genericUnreturned = !(ev.check && ev.check._returned) ? Math.max(0, (ev.vrQty || 0) - allocVR) : 0;
+    const unreturnedCount = allocUnreturned + genericUnreturned;
     alerts += '<div class="alert red" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px"><span>↩ <b>'+esc(ev.name)+'</b> encerrou e tem '+unreturnedCount+' headset(s) aguardando baixa</span><div class="row"><button class="btn sm pri" data-act="dar-baixa" data-id="'+esc(ev.id)+'">✓ Dar baixa e liberar</button><button class="btn sm" data-act="open-event" data-id="'+esc(ev.id)+'">Ver checklist</button></div></div>';
   });
 
@@ -1666,8 +1745,12 @@ function mountItemForm(container, opts){
       '<div class="h3" style="margin-top:0">Fotos ' + (photos.length ? '· ' + photos.length : '') + ' <small class="dim">(a primeira é a capa no inventário)</small></div>' +
       '<div class="photos">' +
       photosHTML +
-      '<label class="ph add" style="cursor:pointer" title="Adicionar fotos">' +
-      '<span>+ Foto<br><small class="dim">ou câmera</small></span>' +
+      '<label class="ph add" style="cursor:pointer" title="Tirar foto agora com a câmera do aparelho">' +
+      '<span>📷 Câmera<br><small class="dim">tirar foto</small></span>' +
+      '<input type="file" accept="image/*" capture="environment" class="hide" data-role="ph-input">' +
+      '</label>' +
+      '<label class="ph add" style="cursor:pointer" title="Escolher fotos da galeria ou arquivos">' +
+      '<span>📁 Álbum<br><small class="dim">da galeria</small></span>' +
       '<input type="file" accept="image/*" multiple class="hide" data-role="ph-input">' +
       '</label>' +
       '</div>' +
@@ -1817,6 +1900,7 @@ function mountItemForm(container, opts){
           toast('Não foi possível ler a imagem: ' + (err.message || err), 'err');
         }
       }
+      try{ t.value = ''; }catch(e){}
       ctx.renderSec('@photos');
     }
   });
@@ -2090,8 +2174,8 @@ function openEvent(id,presetDate){
   if(id&&!src){ toast('Evento não encontrado','warn'); return; }
   if(!db){ toast('Firebase indisponível','err'); return; }
   const day=presetDate||todayISO();
-  const draft=src?{id:src.id,name:src.name,client:src.client||'',place:src.place||'',start:src.start,end:src.end,status:src.status,notes:src.notes||'',startTime:src.startTime||'',endTime:src.endTime||'',alloc:clone(src.alloc),contacts:clone(src.contacts||[]),plan:clone(src.plan||[]),check:clone(src.check||{})}
-    :{id:db.collection(COL.events).doc().id,name:'',client:'',place:'',start:day,end:day,status:'planejado',notes:'',startTime:'',endTime:'',alloc:[],contacts:[],plan:[],check:{}};
+  const draft=src?{id:src.id,name:src.name,client:src.client||'',place:src.place||'',start:src.start,end:src.end,status:src.status,notes:src.notes||'',startTime:src.startTime||'',endTime:src.endTime||'',vrQty:Math.max(0,Math.floor(num(src.vrQty))||0),alloc:clone(src.alloc),contacts:clone(src.contacts||[]),plan:clone(src.plan||[]),check:clone(src.check||{})}
+    :{id:db.collection(COL.events).doc().id,name:'',client:'',place:'',start:day,end:day,status:'planejado',notes:'',startTime:'',endTime:'',vrQty:0,alloc:[],contacts:[],plan:[],check:{}};
   const isNew=!src, ctx={draft,isNew,dirty:false,saving:false,q:'',tag:'all',tmpC:new Map(),line:''};
   const m=openModal({title:isNew?'Novo evento':'Evento: '+draft.name,cls:'wide',foot:true,noBackdrop:true,body:'',
     beforeClose:async()=>!ctx.dirty||await confirmBox('Descartar as alterações deste evento?',{ok:'Descartar',danger:true})});
@@ -2107,6 +2191,7 @@ function openEvent(id,presetDate){
     '<div class="field"><label for="ev-stime">Horário de início</label><input type="time" id="ev-stime" data-ef="startTime"></div>'+
     '<div class="field"><label for="ev-etime">Horário de fim</label><input type="time" id="ev-etime" data-ef="endTime"><span class="hint">Opcional. Horário diário do evento</span></div>'+
     '<div class="field"><label for="ev-status">Situação</label><select id="ev-status" data-ef="status">'+EV_STATUS.map(s=>'<option value="'+s[0]+'">'+s[1]+'</option>').join('')+'</select><span class="hint">Cancelado libera os equipamentos</span></div>'+
+    '<div class="field" style="border:1px solid var(--g);padding:10px;border-radius:var(--r);background:var(--hover2)"><label for="ev-vrqty" style="color:var(--g);font-weight:bold">🥽 Total de Headsets VR necessários</label><input type="number" id="ev-vrqty" data-ef="vrQty" min="0" step="1" placeholder="Ex.: 4 (reserva no calendário sem precisar escolher séries agora)" inputmode="numeric" style="font-weight:bold;font-size:15px"><span class="hint" style="color:var(--g-dim)">Quantidade total de VRs. Já desconta do calendário mesmo sem selecionar cada aparelho individual.</span></div>'+
     '<div class="field full"><label for="ev-notes">Observações</label><textarea id="ev-notes" data-ef="notes"></textarea></div></div></div>'+
    '<div class="sect"><div class="h3" style="margin-top:0">Contatos do evento</div><div id="ev-contacts"></div>'+
      '<div class="toolbar" style="margin:8px 0 0"><select id="ev-cpick" style="width:auto;flex:1;min-width:150px" aria-label="Contato"></select><div class="grow1"><input type="text" id="ev-crole" list="dl-roles" placeholder="Função no evento (ex.: Promotor)" autocomplete="off" aria-label="Função"></div><button class="btn sm" data-e="cadd">Adicionar</button><button class="btn sm blue" data-e="cnew">+ Novo contato</button></div>'+
@@ -2120,10 +2205,13 @@ function openEvent(id,presetDate){
      '<select id="ev-ptag" style="width:auto" aria-label="Categoria"><option value="all">Todas as categorias</option>'+tags.map(t=>'<option value="'+esc(t.name)+'">'+esc(t.name)+'</option>').join('')+'</select></div>'+
      '<div class="pick" id="ev-pick"></div></div>';
   ['name','client','place','start','end','startTime','endTime','status','notes'].forEach(k=>{ $('[data-ef="'+k+'"]',m.body).value=draft[k]; });
+  const vrIn=$('[data-ef="vrQty"]',m.body); if(vrIn) vrIn.value=draft.vrQty||'';
 
+  const allocVRCount=()=>{let c=0; for(const a of draft.alloc){const it=S.itemsById.get(a.itemId); if(it&&isVR(it)) c+=num(a.qty);} return c;};
+  const extraVRNeeded=()=>Math.max(0,(Math.floor(num(draft.vrQty))||0)-allocVRCount());
   const allocMap=()=>{const mp=new Map(); draft.alloc.forEach(a=>mp.set(a.itemId,(mp.get(a.itemId)||0)+num(a.qty))); return mp;};
   const validDates=()=>draft.start&&draft.end&&draft.end>=draft.start&&diffDays(draft.start,draft.end)<400;
-  const getOv=()=>({exclude:isNew?null:draft.id,extra:draft.status==='cancelado'?null:allocMap(),range:[draft.start,draft.end]});
+  const getOv=()=>({exclude:isNew?null:draft.id,extra:draft.status==='cancelado'?null:allocMap(),extraVR:draft.status==='cancelado'?0:extraVRNeeded(),range:[draft.start,draft.end]});
   const problems=ov=>{
     const out=new Map();
     if(draft.status==='cancelado'||draft.end<todayISO()) return out;
@@ -2138,11 +2226,24 @@ function openEvent(id,presetDate){
     const box=$('#ev-sum',m.el);
     if(!validDates()){ box.innerHTML='<div class="empty"><b>Defina as datas do evento</b>O fim deve ser igual ou depois do início.</div>'; return; }
     const ov=getOv(), pr=problems(ov), days=diffDays(draft.start,draft.end)+1;
+    const vrQ=Math.max(0,Math.floor(num(draft.vrQty))||0);
+    const vrAlloc=allocVRCount();
+    let vrNotice='';
+    if(vrQ>0){
+      const vrFreeSt=rangeStats(S.items.filter(isVR),draft.start,draft.end,ov);
+      const pendingVR=Math.max(0,vrQ-vrAlloc);
+      vrNotice='<div class="alert" style="margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">' +
+        '<span>🥽 <b>'+vrQ+' Headset(s) VR reservados no evento</b>'+
+        (pendingVR>0?' ('+vrAlloc+' com série vinculada + <b>'+pendingVR+' genérico(s)</b>)':' (todos vinculados com número de série)')+
+        '</span>'+
+        '<small class="dim">Disponíveis restantes no estoque: <b class="'+(vrFreeSt.F===0?'bad':'good')+'">'+vrFreeSt.F+'</b></small>'+
+        '</div>';
+    }
     const rows=draft.alloc.map(a=>({a,it:S.itemsById.get(a.itemId)})).sort((x,y)=>(x.it?groupKey(x.it):'~').localeCompare(y.it?groupKey(y.it):'~','pt')||(x.it?x.it.name:'').localeCompare(y.it?y.it.name:'','pt',{numeric:true}));
     const gm=new Map(); rows.forEach(({a,it})=>{ if(!it) return; const k=groupKey(it); gm.set(k,(gm.get(k)||0)+num(a.qty)); });
     const sumRows=Array.from(gm,([k,n])=>{ const st=rangeStats(S.items.filter(i=>groupKey(i)===k),draft.start,draft.end,ov); return '<tr><td>'+esc(k)+'</td><td>'+n+'</td><td class="'+(st.F===0?'bad':'good')+'"><b>'+st.F+'</b></td></tr>'; }).join('');
     const total=draft.alloc.reduce((s,a)=>s+num(a.qty),0);
-    box.innerHTML='<div class="h3" style="margin-top:0">Equipamentos do evento · '+total+' un.</div>'+
+    box.innerHTML=vrNotice+'<div class="h3" style="margin-top:0">Equipamentos do evento · '+total+' un.</div>'+
       '<div class="dim" style="font-size:12px;margin-bottom:8px">'+esc(fmtRange(draft.start,draft.end))+' · '+days+' dia(s). Ao salvar, estes itens ficam indisponíveis nessas datas na tela Geral.</div>'+
       (sumRows?'<table class="sumtbl"><tr><th>Modelo</th><th>No evento</th><th>Sobram</th></tr>'+sumRows+'</table><div style="height:10px"></div>':'')+
       (rows.length?rows.map(({a,it})=>{
@@ -2208,16 +2309,24 @@ function openEvent(id,presetDate){
   const setAlloc=(itemId,qty,planId)=>{ const a=draft.alloc.find(x=>x.itemId===itemId); if(a) a.qty=qty; else draft.alloc.push({itemId,qty,planId:planId||autoLine(itemId)}); ctx.dirty=true; };
   m.body.addEventListener('input',e=>{
     const t=e.target;
-    if(t.dataset.ef){ draft[t.dataset.ef]=t.value; ctx.dirty=true; if(t.dataset.ef==='name') m.setTitle(t.value?'Evento: '+t.value:'Novo evento'); }
+    if(t.dataset.ef){
+      if(t.dataset.ef==='vrQty') draft.vrQty=Math.max(0,Math.floor(num(t.value))||0);
+      else draft[t.dataset.ef]=t.value;
+      ctx.dirty=true;
+      if(t.dataset.ef==='name') m.setTitle(t.value?'Evento: '+t.value:'Novo evento');
+      if(t.dataset.ef==='vrQty') renderSum();
+    }
     else if(t.id==='ev-pq'){ ctx.q=t.value; renderPick(); }
   });
   m.body.addEventListener('change',e=>{
     const t=e.target;
     if(t.dataset.ef){
-      draft[t.dataset.ef]=t.value; ctx.dirty=true;
+      if(t.dataset.ef==='vrQty') draft.vrQty=Math.max(0,Math.floor(num(t.value))||0);
+      else draft[t.dataset.ef]=t.value;
+      ctx.dirty=true;
       if(t.dataset.ef==='start'&&draft.end<draft.start){ draft.end=draft.start; $('#ev-end',m.el).value=draft.end; }
       if(t.dataset.ef==='end'&&draft.end<draft.start){ toast('O fim não pode ser antes do início','warn'); draft.end=draft.start; t.value=draft.end; }
-      if(['start','end','status'].includes(t.dataset.ef)) renderAll();
+      if(['start','end','status','vrQty'].includes(t.dataset.ef)) renderAll();
     }else if(t.id==='ev-ptag'){ ctx.tag=t.value; renderPick(); }
     else if(t.id==='ev-cpick'){ const o=t.selectedOptions[0]; $('#ev-crole',m.el).placeholder=(o&&o.dataset.role)?o.dataset.role+' (padrão)':'Função no evento (ex.: Promotor)'; }
     else if(t.dataset.eq){ const it=S.itemsById.get(t.dataset.eq); const max=it?totalQty(it):9999; let q=Math.floor(num(t.value)); if(q<1)q=1; if(q>max)q=max; t.value=q; setAlloc(t.dataset.eq,q); renderSum(); renderPick(); renderQuick(); }
@@ -2229,7 +2338,7 @@ function openEvent(id,presetDate){
     else if(a==='kadd'){ const k=(S.kits||[]).find(x=>x.id===$('#pl-kit',m.el).value); if(!k) return; k.lines.forEach(l=>draft.plan.push({id:Math.random().toString(36).slice(2,9),label:l.label,qty:l.qty,done:false,kit:k.name})); ctx.dirty=true; renderPlan(); toast('Kit “'+k.name+'” adicionado ao planejamento'); }
     else if(a==='ck'){ const c=draft.check[b.dataset.id]=draft.check[b.dataset.id]||{}, k=b.dataset.k; if(c[k]) delete c[k]; else c[k]=k==='d'?1:Date.now(); ctx.dirty=true; renderCk(); }
     else if(a==='ckall'){ const k=b.dataset.k, all=draft.alloc.every(x=>draft.check[x.itemId]&&draft.check[x.itemId][k]); draft.alloc.forEach(x=>{ const c=draft.check[x.itemId]=draft.check[x.itemId]||{}; if(all) delete c[k]; else if(!c[k]) c[k]=Date.now(); }); ctx.dirty=true; renderCk(); }
-    else if(a==='baixa-all'){ const now=Date.now(); draft.alloc.forEach(x=>{ const c=draft.check[x.itemId]=draft.check[x.itemId]||{}; c.r=now; }); ctx.dirty=true; renderCk(); toast('Baixa registrada para todos os itens!'); }
+    else if(a==='baixa-all'){ const now=Date.now(); draft.alloc.forEach(x=>{ const c=draft.check[x.itemId]=draft.check[x.itemId]||{}; c.r=now; }); draft.check._returned=now; ctx.dirty=true; renderCk(); toast('Baixa registrada para todos os itens!'); }
     else if(a==='padd'){
       const n=$('#pl-n',m.el), q=Math.max(1,Math.floor(num($('#pl-q',m.el).value))), label=n.value.trim();
       if(!label){ toast('Digite o que vai precisar','warn'); n.focus(); return; }
@@ -2285,7 +2394,9 @@ function openEvent(id,presetDate){
     ctx.saving=true; $$('.sheet-foot .btn',m.el).forEach(x=>x.disabled=true);
     try{
       const now=Date.now();
-      const data={name,client:String(draft.client||'').trim(),place:String(draft.place||'').trim(),startTime:draft.startTime||'',endTime:draft.endTime||'',start:draft.start,end:draft.end,status:draft.status,notes:String(draft.notes||'').trim(),
+      const data={name,client:String(draft.client||'').trim(),place:String(draft.place||'').trim(),startTime:draft.startTime||'',endTime:draft.endTime||'',start:draft.start,end:draft.end,status:draft.status,
+        vrQty:Math.max(0,Math.floor(num(draft.vrQty))||0),
+        notes:String(draft.notes||'').trim(),
         alloc:draft.alloc.filter(a=>num(a.qty)>0).map(a=>({itemId:a.itemId,qty:Math.floor(num(a.qty)),planId:a.planId||''})),
         plan:draft.plan.filter(l=>String(l.label||'').trim()).map(l=>({id:l.id,label:String(l.label).trim(),qty:Math.max(1,Math.floor(num(l.qty))||1),done:!!l.done,kit:l.kit||''})),
         check:Object.fromEntries(draft.alloc.filter(a=>draft.check[a.itemId]&&Object.keys(draft.check[a.itemId]).length).map(a=>[a.itemId,draft.check[a.itemId]])),
@@ -2812,6 +2923,7 @@ async function darBaixaEvento(evId){
     ck[a.itemId]=ck[a.itemId]||{};
     if(!ck[a.itemId].r) ck[a.itemId].r=now;
   });
+  ck._returned=now;
   try{
     await runBatch(b=>b.update(db.collection(COL.events).doc(evId),{check:clean(ck),updatedAt:now}));
     toast('Baixa realizada! Headsets liberados no estoque.');
@@ -2921,9 +3033,12 @@ const kcf=ev=>{if(!K.cf.has(ev.id))K.cf.set(ev.id,eventConflicts(ev));return K.c
 function kScope(){let s=K.scope==='auto'?resolveScope():K.scope; if(s!=='all'&&!scopeItems(s).length) s='all'; return s;}
 function kShort(ev){   /* o que falta por modelo */
   const m=new Map();
-  for(const c of kcf(ev)){const it=S.itemsById.get(c.itemId),k=it?groupKey(it):'(item removido)';
-    const n=it?Math.max(1,...c.days.map(d=>reservedFor(c.itemId,d)-usableQty(it,d))):1; m.set(k,(m.get(k)||0)+n);}
-  return Array.from(m,([k,n])=>n+'× '+k).join(' · ');
+  for(const c of kcf(ev)){
+    if(c.isVRDeficit){ m.set('Headsets VR', 'déficit no período'); continue; }
+    const it=S.itemsById.get(c.itemId),k=it?groupKey(it):'(item removido)';
+    const n=it?Math.max(1,...c.days.map(d=>reservedFor(c.itemId,d)-usableQty(it,d))):1; m.set(k,(m.get(k)||0)+n);
+  }
+  return Array.from(m,([k,n])=>typeof n==='number'?n+'× '+k:k+' ('+n+')').join(' · ');
 }
 function kAlerts(){
   const t=todayISO(),o=[],conf=S.events.filter(e=>e.end>=t&&e.status!=='cancelado'&&kcf(e).length);
