@@ -512,9 +512,10 @@ const ITEM_FIELDS = [
   {sec:'Identificação', key:'name',      label:'Nome do item', type:'text', req:true, ph:'Ex.: Quest 3 nº 07'},
   {sec:'Identificação', key:'model',     label:'Modelo / tipo', type:'text', suggest:true, ph:'Ex.: Meta Quest 3 128 GB', hint:'Itens com o mesmo modelo são somados na tela Geral'},
   {sec:'Identificação', key:'brand',     label:'Marca', type:'text', suggest:true, ph:'Ex.: Meta, BOBOVR'},
-  {sec:'Identificação', key:'serial',    label:'Nº de série', type:'text'},
+  {sec:'Identificação', key:'serial',    label:'Nº de série', type:'text', showIf:d=>!d._lot, hint:'Opcional. Em lotes, dá para preencher depois em cada unidade'},
+  {sec:'Identificação', key:'batch',     label:'Lote', type:'text', suggest:true, ph:'Ex.: Quest 3 — compra jan/26', hint:'Agrupa unidades criadas juntas. Use o mesmo nome de um lote existente para adicionar unidades avulsas a ele'},
   {sec:'Estoque', key:'vr',        label:'Conta como VR (Meta Quest)?', type:'select', options:[['','Automático (pelo nome/tag)'],['sim','Sim, é um VR'],['nao','Não, é outro aparelho']], hint:'Só os VRs entram nos totais da Geral e do calendário da TV'},
-  {sec:'Estoque', key:'mode',      label:'Controle', type:'select', options:[['unit','Unidade única'],['qty','Por quantidade (lote)']], reflow:true, hint:'Use "lote" para itens sem série individual (cabos, canetas…)'},
+  {sec:'Estoque', key:'mode',      label:'Controle', type:'select', options:[['unit','Unidade única'],['qty','Por quantidade (lote antigo)']], reflow:true, showIf:d=>d.mode==='qty', hint:'Este é um lote antigo por quantidade. Para novos lotes, escolha “Lote” ao cadastrar: cada unidade vira um item individual'},
   {sec:'Estoque', key:'qty',       label:'Quantidade total', type:'number', min:1, step:'1', showIf:d=>d.mode==='qty', hint:'Vendas são descontadas automaticamente'},
   {sec:'Estoque', key:'unavailQty',label:'Quantidade indisponível', type:'number', min:0, step:'1', showIf:d=>d.mode==='qty', hint:'Quebradas ou em manutenção'},
   {sec:'Estoque', key:'status',    label:'Situação', type:'select', options:STATUS, reflow:true},
@@ -527,8 +528,9 @@ const ITEM_FIELDS = [
   {sec:'Notas',   key:'notes',     label:'Observações', type:'textarea'}
 ];
 /* Ordem das seções do formulário. "@" = blocos especiais. */
-const FORM_LAYOUT = ['Identificação','@tags','Estoque','Compra','@photos','@maintenance','Notas','@custom','@qr'];
-const DEFAULT_ITEM = ()=>({name:'',model:'',brand:'',serial:'',mode:'unit',vr:'',qty:1,unavailQty:0,status:'disponivel',backOn:'',condition:'bom',location:'',acquiredOn:'',value:'',supplier:'',notes:'',tags:[],custom:[],maintenance:[],holdings:[],photosAt:0,qrEnabled:true});
+const FORM_LAYOUT = ['@lot','Identificação','@tags','Estoque','Compra','@photos','@maintenance','Notas','@custom','@qr'];
+const DEFAULT_ITEM = ()=>({name:'',model:'',brand:'',serial:'',batch:'',mode:'unit',vr:'',qty:1,unavailQty:0,status:'disponivel',backOn:'',condition:'bom',location:'',acquiredOn:'',value:'',supplier:'',notes:'',tags:[],custom:[],maintenance:[],holdings:[],photosAt:0,qrEnabled:true});
+const LOT_MAX = 200;   /* máximo de unidades criadas de uma vez */
 const PERSIST_KEYS = ITEM_FIELDS.map(f=>f.key).concat(['tags','custom','maintenance','qrEnabled']);
 
 /* =====================================================================
@@ -1112,7 +1114,7 @@ function labelsHTML(items,size){
     '<div class="label"><div class="lq">'+qrSvg(itemUrl(it.id))+'</div><div class="lt"><b>'+esc(it.name)+'</b>'+
     (it.model&&it.model!==it.name?'<span>'+esc(it.model)+'</span>':'')+
     (it.serial?'<span>S/N '+esc(it.serial)+'</span>':'')+
-    (it.mode==='qty'?'<span>Lote: '+totalQty(it)+' un.</span>':'')+
+    (it.mode==='qty'?'<span>Lote: '+totalQty(it)+' un.</span>':(it.batch?'<span>Lote: '+esc(it.batch)+'</span>':''))+
     '</div></div>').join('')+'</div>';
 }
 async function openLabels(items){
@@ -1413,7 +1415,7 @@ function evRowHTML(ev){
 /* ---------- CATEGORIAS ---------- */
 let catsShell=false;
 function itemSearchText(it){
-  return norm([it.name,it.model,it.brand,it.serial,it.location,it.supplier,it.notes,(it.tags||[]).join(' '),(it.custom||[]).map(c=>c.k+' '+c.v).join(' '),(it.holdings||[]).map(h=>contactName(h.contactId)).join(' ')].join(' '));
+  return norm([it.name,it.model,it.brand,it.serial,it.batch,it.location,it.supplier,it.notes,(it.tags||[]).join(' '),(it.custom||[]).map(c=>c.k+' '+c.v).join(' '),(it.holdings||[]).map(h=>contactName(h.contactId)).join(' ')].join(' '));
 }
 function filteredItems(){
   const u=S.ui, q=norm(u.q.trim());
@@ -1460,7 +1462,7 @@ function itemRowHTML(it){
   }
 
   return '<button class="irow" data-act="open-item" data-id="'+esc(it.id)+'"><span class="thumb">'+(it.thumb?'<img alt="" src="'+esc(it.thumb)+'">':'▢')+'</span>'+
-    '<span class="imain"><b>'+esc(it.name)+'</b><small>'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:''].filter(Boolean).join(' · ')||(it.mode==='qty'?'Lote de '+totalQty(it):'—'))+'</small>'+
+    '<span class="imain"><b>'+esc(it.name)+'</b><small>'+esc([it.model&&it.model!==it.name?it.model:'',it.serial?'S/N '+it.serial:'',it.batch?'Lote: '+it.batch:''].filter(Boolean).join(' · ')||(it.mode==='qty'?'Lote de '+totalQty(it):'—'))+'</small>'+
     ((it.tags||[]).length?'<span class="tagline">'+it.tags.map(t=>'<span class="tag">'+esc(t)+'</span>').join('')+'</span>':'')+'</span>'+
     '<span class="imeta">'+statusBadgeHtml+condHTML(it.condition)+avHtml+'</span></button>';
 }
@@ -1672,6 +1674,10 @@ function mountItemForm(container, opts){
   const { draft, mode, scroller, modal } = opts;
   const ctx = { dirty: false, saving: false, renderSec: null };
   const uid = Math.random().toString(36).slice(2, 7);
+  const LOT_FMT = { nr: ' nº ', sp: ' ', hash: ' #', dash: ' - ' };
+  if(mode === 'create' && draft._lotQty == null){
+    draft._lot = false; draft._lotQty = 5; draft._lotNum = true; draft._lotStart = 1; draft._lotFmt = 'nr'; draft._lotSerials = '';
+  }
 
   if(modal && modal.foot){
     modal.foot.classList.remove('hide');
@@ -1713,7 +1719,7 @@ function mountItemForm(container, opts){
           (f.type === 'number' ? ' inputmode="decimal"' : '') + '>';
       }
       return '<div class="field' + (f.type === 'textarea' || f.key === 'notes' ? ' full' : '') + '">' +
-        '<label for="' + idf + '">' + esc(f.label) + (f.req ? ' *' : '') + '</label>' +
+        '<label for="' + idf + '">' + esc(f.key === 'name' && draft._lot ? 'Nome base das unidades' : f.label) + (f.req ? ' *' : '') + '</label>' +
         inputHTML +
         (f.hint ? '<span class="hint">' + esc(f.hint) + '</span>' : '') +
         '</div>';
@@ -1801,12 +1807,105 @@ function mountItemForm(container, opts){
       '<span>Habilitar QR Code e impressão de etiqueta</span>' +
       '</label>' +
       '<div id="f-qr-block-' + uid + '" class="' + (enabled ? '' : 'hide') + '">' +
-      qrBlockHTML(draft) +
+      (draft._lot && mode === 'create'
+        ? '<div class="dim" style="font-size:12px">Cada unidade do lote terá o próprio QR Code. Depois de criar, imprima as etiquetas em Inventário → Etiquetas.</div>'
+        : qrBlockHTML(draft)) +
       '</div>' +
       '</div>';
   }
 
+  /* ---------- Cadastro em lote: cria uma unidade individual para cada item ---------- */
+  const lotCount = () => Math.max(1, Math.min(LOT_MAX, Math.floor(num(draft._lotQty)) || 1));
+  const lotStart = () => (draft._lotStart === '' || draft._lotStart == null) ? 1 : Math.max(0, Math.floor(num(draft._lotStart)));
+  const lotBatchName = () => String(draft.batch || '').trim() || String(draft.name || '').trim();
+  function lotNames(){
+    const base = String(draft.name || '').trim() || 'Item';
+    const n = lotCount(), st = lotStart();
+    const w = Math.max(2, String(st + n - 1).length);
+    return Array.from({ length: n }, (_, i) => draft._lotNum ? base + (LOT_FMT[draft._lotFmt] || ' ') + String(st + i).padStart(w, '0') : base);
+  }
+  function lotSerials(){
+    return String(draft._lotSerials || '').split(/\r?\n/).map(x => x.trim());
+  }
+
+  function renderLotSec(){
+    if(mode !== 'create') return '';
+    const on = !!draft._lot;
+    let h = '<div class="sect" data-sec="@lot">' +
+      '<div class="h3" style="margin-top:0">Quantidade</div>' +
+      '<div class="chips">' +
+      '<button type="button" class="chip' + (on ? '' : ' on') + '" data-lot-mode="0">1 item</button>' +
+      '<button type="button" class="chip' + (on ? ' on' : '') + '" data-lot-mode="1">Lote: vários de uma vez</button>' +
+      '</div>';
+    if(!on){
+      h += '<div class="hint dim" style="font-size:11px;margin-top:6px">Cadastra um único item. Para criar vários iguais de uma vez (cada um vira um item individual), escolha “Lote”.</div>';
+    } else {
+      const id = k => 'lot-' + uid + '-' + k;
+      h += '<div class="hint dim" style="font-size:11px;margin-top:6px">Cada unidade vira um item individual com os dados preenchidos abaixo. Depois você edita, coloca nº de série e usa cada uma em eventos e aluguéis. Elas continuam marcadas com o nome do lote.</div>' +
+        '<div class="fgrid" style="margin-top:10px">' +
+        '<div class="field"><label for="' + id('qty') + '">Quantas unidades? (máx. ' + LOT_MAX + ')</label>' +
+          '<input type="number" id="' + id('qty') + '" data-lot="qty" min="1" max="' + LOT_MAX + '" step="1" inputmode="numeric" value="' + esc(draft._lotQty) + '"></div>' +
+        '<div class="field"><label>&nbsp;</label><label class="check" style="min-height:40px"><input type="checkbox" data-lot="num"' + (draft._lotNum ? ' checked' : '') + '><span>Numerar automaticamente</span></label></div>' +
+        (draft._lotNum
+          ? '<div class="field"><label for="' + id('start') + '">Começar em</label>' +
+              '<input type="number" id="' + id('start') + '" data-lot="start" min="0" step="1" inputmode="numeric" value="' + esc(draft._lotStart) + '"></div>' +
+            '<div class="field"><label for="' + id('fmt') + '">Formato do número</label>' +
+              '<select id="' + id('fmt') + '" data-lot="fmt">' +
+              [['nr', 'Nome nº 01'], ['sp', 'Nome 01'], ['hash', 'Nome #01'], ['dash', 'Nome - 01']].map(([k, l]) => '<option value="' + k + '"' + (draft._lotFmt === k ? ' selected' : '') + '>' + l + '</option>').join('') +
+              '</select></div>'
+          : '') +
+        '<div class="field full"><label for="' + id('ser') + '">Nºs de série das unidades <span class="dim">(opcional)</span></label>' +
+          '<textarea id="' + id('ser') + '" data-lot="serials" placeholder="Um por linha, na ordem das unidades. Pode deixar vazio e preencher depois em cada unidade.">' + esc(draft._lotSerials || '') + '</textarea></div>' +
+        '</div>' +
+        '<div data-lot-info class="dim" style="font-size:12px;margin-top:8px"></div>' +
+        '<div data-lot-prev style="margin-top:8px;border-left:2px solid var(--g);padding:6px 10px;background:var(--panel2);font-size:13px;overflow-wrap:anywhere"></div>';
+    }
+    return h + '</div>';
+  }
+
+  function updateLot(){
+    if(mode !== 'create') return;
+    const on = !!draft._lot, n = lotCount();
+    if(modal && modal.foot){
+      const sv = $('[data-role="save"]', modal.foot), sn = $('[data-role="save-new"]', modal.foot);
+      if(sv) sv.textContent = on ? 'Criar ' + n + (n === 1 ? ' unidade' : ' unidades') : 'Salvar';
+      if(sn){
+        sn.textContent = on ? 'Criar e continuar' : 'Salvar e criar novo';
+        sn.title = on ? 'Cria as unidades e reabre o cadastro com a numeração seguindo do último número (Ctrl+Shift+Enter)' : 'Salvar e abrir um novo cadastro com os mesmos dados (Ctrl+Shift+Enter)';
+      }
+    }
+    const prev = container.querySelector('[data-lot-prev]'), info = container.querySelector('[data-lot-info]');
+    if(!on || !prev) return;
+    const names = lotNames();
+    const shown = names.length <= 4 ? names : names.slice(0, 3).concat(['…', names[names.length - 1]]);
+    const filled = lotSerials().slice(0, n).filter(Boolean).length;
+    const over = Math.floor(num(draft._lotQty)) > LOT_MAX;
+    prev.innerHTML = '<b>' + n + (n === 1 ? ' unidade será criada' : ' unidades serão criadas') + '</b>' + (over ? ' <span class="warn">(limite de ' + LOT_MAX + ' por vez)</span>' : '') +
+      '<br>' + esc(shown.join(' · ')) + (filled ? '<br><small class="dim">' + filled + ' nº(s) de série informado(s)</small>' : '');
+    if(info){
+      const bn = lotBatchName();
+      const k = bn ? S.items.filter(i => i.batch && norm(i.batch) === norm(bn)).length : 0;
+      info.innerHTML = bn
+        ? 'Lote “' + esc(bn) + '”' + (k
+            ? ' já tem ' + k + ' unidade(s).' + (draft._lotNum && lotStart() !== k + 1 ? ' <button type="button" class="chip" data-lot-cont="' + (k + 1) + '">Numerar a partir de ' + (k + 1) + '</button>' : '')
+            : ' (novo lote)')
+        : '';
+    }
+  }
+
+  function setLotField(t){
+    const k = t.dataset.lot;
+    if(k === 'num') draft._lotNum = t.checked;
+    else if(k === 'qty') draft._lotQty = t.value;
+    else if(k === 'start') draft._lotStart = t.value;
+    else if(k === 'fmt') draft._lotFmt = t.value;
+    else if(k === 'serials') draft._lotSerials = t.value;
+    ctx.dirty = true;
+    updateLot();
+  }
+
   function renderSection(sec){
+    if(sec === '@lot') return renderLotSec();
     if(sec === '@tags') return renderTagsSec();
     if(sec === '@photos') return renderPhotosSec();
     if(sec === '@maintenance') return renderMaintenanceSec();
@@ -1843,6 +1942,7 @@ function mountItemForm(container, opts){
     container.innerHTML = dls + FORM_LAYOUT.map(renderSection).join('') + renderActionBar();
     fillQrSlots(container);
     if(scroller) scroller.scrollTop = top;
+    updateLot();
   }
 
   renderAll();
@@ -1869,9 +1969,12 @@ function mountItemForm(container, opts){
     if(t.dataset.f){
       draft[t.dataset.f] = t.value;
       ctx.dirty = true;
+      if(mode === 'create' && draft._lot && (t.dataset.f === 'name' || t.dataset.f === 'batch')) updateLot();
       if(t.dataset.f === 'name' && modal){
         modal.setTitle(t.value ? (mode === 'create' ? 'Cadastrar: ' + t.value : 'Editar: ' + t.value) : (mode === 'create' ? 'Cadastrar item' : 'Editar item'));
       }
+    } else if(t.dataset.lot){
+      setLotField(t);
     } else if(t.dataset.role === 'tag-in'){
       if(t.value.includes(',')){
         addTag(t.value);
@@ -1905,6 +2008,8 @@ function mountItemForm(container, opts){
       if(t.value.trim()){
         addTag(t.value);
       }
+    } else if(t.dataset.lot === 'num'){
+      ctx.renderSec('@lot');
     } else if(t.dataset.role === 'qr-toggle'){
       draft.qrEnabled = t.checked;
       ctx.dirty = true;
@@ -1960,6 +2065,21 @@ function mountItemForm(container, opts){
       if(roleBtn.dataset.role === 'save-new'){ saveItem(true); return; }
       if(roleBtn.dataset.role === 'del'){ delItem(); return; }
     }
+    const lotMode = e.target.closest('[data-lot-mode]');
+    if(lotMode){
+      draft._lot = lotMode.dataset.lotMode === '1';
+      ctx.dirty = true;
+      ['@lot', 'Identificação', '@qr'].forEach(sc => ctx.renderSec(sc));
+      updateLot();
+      return;
+    }
+    const lotCont = e.target.closest('[data-lot-cont]');
+    if(lotCont){
+      draft._lotStart = lotCont.dataset.lotCont;
+      ctx.renderSec('@lot');
+      updateLot();
+      return;
+    }
     const tagAdd = e.target.closest('[data-tag-add]');
     if(tagAdd){
       addTag(tagAdd.dataset.tagAdd);
@@ -2011,7 +2131,7 @@ function mountItemForm(container, opts){
   const rid = () => (db && db.collection) ? db.collection(COL.items).doc().id : Math.random().toString(36).slice(2, 10);
 
   /* Prepara o formulário para o próximo cadastro, mantendo os dados do item que acabou de ser salvo */
-  function resetForNext(now){
+  function resetForNext(now, lotRes){
     const photosCopy = (draft._photos || []).map(p => ({ id: Math.random().toString(36).slice(2, 10), data: p.data, ts: now }));
     draft.id = rid();
     draft.serial = '';          // série é única por aparelho
@@ -2023,6 +2143,11 @@ function mountItemForm(container, opts){
     liveDrafts.set(draft.id, draft);
     ctx.dirty = false;
     ctx.saving = false;
+    if(lotRes){
+      draft._lotStart = lotRes.nextStart;   // a numeração continua de onde parou
+      draft._lotSerials = '';
+      if(!String(draft.batch || '').trim()) draft.batch = lotRes.batch;
+    }
     if(modal && modal.el) $$('.sheet-foot .btn', modal.el).forEach(b => b.disabled = false);
     renderAll();
     if(modal){
@@ -2048,7 +2173,26 @@ function mountItemForm(container, opts){
       if(el){ el.focus(); el.scrollIntoView({ block: 'center' }); }
       return;
     }
-    if(mode === 'create'){
+    const lot = mode === 'create' && !!draft._lot;
+    let lotNameArr = [], lotSerialArr = [], lotBatch = '', lotNext = 0;
+    if(lot){
+      const n = lotCount();
+      lotNameArr = lotNames(); lotSerialArr = lotSerials(); lotBatch = lotBatchName(); lotNext = lotStart() + n;
+      const filled = lotSerialArr.slice(0, n).filter(Boolean).map(x => x.toLowerCase());
+      const have = new Set(S.items.map(i => String(i.serial || '').trim().toLowerCase()).filter(Boolean));
+      const dup = filled.filter((x, i) => filled.indexOf(x) !== i || have.has(x));
+      const nPh = (draft._photos || []).length;
+      let warn = '';
+      if(dup.length) warn = 'Há nº(s) de série repetido(s) (' + Array.from(new Set(dup)).slice(0, 3).join(', ') + (dup.length > 3 ? '…' : '') + ').\nCriar mesmo assim?';
+      else if(nPh * n > 40) warn = 'Serão gravadas ' + (nPh * n) + ' fotos (' + nPh + ' em cada uma das ' + n + ' unidades).\nPara ficar mais leve, crie o lote sem fotos e adicione depois só onde precisar.\nCriar mesmo assim?';
+      if(warn){
+        ctx.saving = true;
+        const ok = await confirmBox(warn, { ok: 'Criar mesmo assim', title: dup.length ? 'Série repetida' : 'Muitas fotos' });
+        ctx.saving = false;
+        if(!ok) return;
+      }
+    }
+    if(mode === 'create' && !lot){
       const sn = String(draft.serial || '').trim().toLowerCase();
       if(sn && S.items.some(i => String(i.serial || '').trim().toLowerCase() === sn)){
         ctx.saving = true;
@@ -2100,6 +2244,27 @@ function mountItemForm(container, opts){
         data.photosAt = now;
       }
 
+      if(lot){
+        const docs = lotNameArr.map((nm, i) => [i === 0 ? draft.id : rid(), Object.assign({}, data, { name: nm, serial: lotSerialArr[i] || '', batch: lotBatch, createdAt: now + i })]);
+        await runBatch(batch => {
+          docs.forEach(([id, d]) => batch.set(db.collection(COL.items).doc(id), clean(d), { merge: true }));
+        });
+        if(photos.length){
+          try {
+            const ops = [];
+            docs.forEach(([id]) => photos.forEach(p => ops.push([id, p])));
+            for(let i = 0; i < ops.length; i += 400){
+              const part = ops.slice(i, i + 400);
+              await runBatch(batch => {
+                part.forEach(([id, p]) => batch.set(db.collection(COL.photos).doc(), { itemId: id, data: p.data, ts: p.ts || now }));
+              });
+            }
+            docs.forEach(([id]) => S.photoCache.delete(id));
+          } catch(phErr){
+            console.warn('Erro ao salvar fotos do lote:', phErr);
+          }
+        }
+      } else {
       await runBatch(batch => {
         batch.set(db.collection(COL.items).doc(draft.id), clean(data), { merge: true });
       });
@@ -2126,17 +2291,21 @@ function mountItemForm(container, opts){
           console.warn('Erro ao salvar fotos no Firestore:', phErr);
         }
       }
+      }
 
       ctx.dirty = false;
+      const lastN = lotNameArr[lotNameArr.length - 1];
+      const lotMsg = lot ? lotNameArr.length + (lotNameArr.length === 1 ? ' unidade criada' : ' unidades criadas') + ' no lote “' + lotBatch + '”' : '';
       if(andNew){
-        ctx.savedCount = (ctx.savedCount || 0) + 1;
-        ctx.lastSaved = name;
-        toast('“' + name + '” salvo! Novo cadastro aberto com os mesmos dados.');
-        resetForNext(now);
+        const made = lot ? lotNameArr.length : 1;
+        ctx.savedCount = (ctx.savedCount || 0) + made;
+        ctx.lastSaved = lot ? (lotNameArr.length > 1 ? lotNameArr[0] + ' … ' + lastN : name) : name;
+        toast(lot ? lotMsg + '. Cadastro reaberto, numeração continua.' : '“' + name + '” salvo! Novo cadastro aberto com os mesmos dados.');
+        resetForNext(now, lot ? { nextStart: lotNext, batch: lotBatch } : null);
         return;
       }
       liveDrafts.delete(draft.id);
-      toast(mode === 'create' ? 'Item cadastrado com sucesso!' : 'Item atualizado com sucesso!');
+      toast(lot ? lotMsg : (mode === 'create' ? 'Item cadastrado com sucesso!' : 'Item atualizado com sucesso!'));
       if(modal) modal.close();
     } catch(err){
       handleWriteError(err);
