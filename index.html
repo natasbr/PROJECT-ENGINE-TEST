@@ -1676,7 +1676,10 @@ function mountItemForm(container, opts){
   if(modal && modal.foot){
     modal.foot.classList.remove('hide');
     if(mode === 'create'){
-      modal.foot.innerHTML = '<button type="button" class="btn" data-mclose>Cancelar</button><button type="button" class="btn pri" data-role="save">Cadastrar item</button>';
+      modal.foot.innerHTML = '<span data-saved-info style="display:none;flex:1 0 100%;font-size:12px;color:var(--ok);text-align:left"></span>' +
+        '<button type="button" class="btn" data-mclose>Cancelar</button>' +
+        '<button type="button" class="btn pri" data-role="save" title="Salvar e fechar (Ctrl+Enter)">Salvar</button>' +
+        '<button type="button" class="btn blue" data-role="save-new" title="Salvar e abrir um novo cadastro com os mesmos dados (Ctrl+Shift+Enter)">Salvar e criar novo</button>';
     } else {
       modal.foot.innerHTML = '<button type="button" class="btn danger" data-role="del" style="margin-right:auto">Excluir item</button><button type="button" class="btn" data-mclose>Cancelar</button><button type="button" class="btn pri" data-role="save">Salvar alterações</button>';
     }
@@ -1824,10 +1827,7 @@ function mountItemForm(container, opts){
 
   function renderActionBar(){
     if(mode === 'create'){
-      return '<div class="actionbar" style="justify-content:flex-end;margin-top:14px">' +
-        '<button type="button" class="btn" data-mclose>Cancelar</button>' +
-        '<button type="button" class="btn pri" data-role="save">Cadastrar item</button>' +
-        '</div>';
+      return '<div class="hint dim" style="font-size:11px;margin-top:10px;text-align:center">Atalhos: Ctrl+Enter salva · Ctrl+Shift+Enter salva e cria outro com os mesmos dados</div>';
     } else {
       return '<div class="actionbar" style="justify-content:space-between;margin-top:14px">' +
         '<button type="button" class="btn danger" data-role="del">Excluir item</button>' +
@@ -1930,6 +1930,12 @@ function mountItemForm(container, opts){
   // Handle keyboard events (e.g. Enter on tag input)
   container.addEventListener('keydown', e => {
     const t = e.target;
+    if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+      e.preventDefault();
+      if(t.dataset.role === 'tag-in' && t.value.trim()) addTag(t.value);
+      saveItem(mode === 'create' && e.shiftKey);
+      return;
+    }
     if(t.dataset.role === 'tag-in'){
       if(e.key === 'Enter'){
         e.preventDefault();
@@ -1950,7 +1956,8 @@ function mountItemForm(container, opts){
   container.addEventListener('click', e => {
     const roleBtn = e.target.closest('[data-role]');
     if(roleBtn){
-      if(roleBtn.dataset.role === 'save'){ saveItem(); return; }
+      if(roleBtn.dataset.role === 'save'){ saveItem(false); return; }
+      if(roleBtn.dataset.role === 'save-new'){ saveItem(true); return; }
       if(roleBtn.dataset.role === 'del'){ delItem(); return; }
     }
     const tagAdd = e.target.closest('[data-tag-add]');
@@ -2001,14 +2008,58 @@ function mountItemForm(container, opts){
     }
   });
 
-  async function saveItem(){
+  const rid = () => (db && db.collection) ? db.collection(COL.items).doc().id : Math.random().toString(36).slice(2, 10);
+
+  /* Prepara o formulário para o próximo cadastro, mantendo os dados do item que acabou de ser salvo */
+  function resetForNext(now){
+    const photosCopy = (draft._photos || []).map(p => ({ id: Math.random().toString(36).slice(2, 10), data: p.data, ts: now }));
+    draft.id = rid();
+    draft.serial = '';          // série é única por aparelho
+    draft.maintenance = [];     // histórico pertence ao item salvo
+    draft.holdings = [];
+    draft._orig = [];
+    draft._photos = photosCopy;
+    draft._photosLoaded = true;
+    liveDrafts.set(draft.id, draft);
+    ctx.dirty = false;
+    ctx.saving = false;
+    if(modal && modal.el) $$('.sheet-foot .btn', modal.el).forEach(b => b.disabled = false);
+    renderAll();
+    if(modal){
+      modal.setTitle('Cadastrar: ' + (draft.name || 'novo item'));
+      const info = $('[data-saved-info]', modal.el);
+      if(info){
+        info.style.display = '';
+        info.textContent = '✓ ' + ctx.savedCount + (ctx.savedCount === 1 ? ' item salvo' : ' itens salvos') + ' nesta sessão · último: ' + ctx.lastSaved;
+      }
+    }
+    if(scroller) scroller.scrollTop = 0;
+    const nameIn = container.querySelector('[data-f="name"]');
+    if(nameIn && !matchMedia('(pointer:coarse)').matches){ nameIn.focus(); nameIn.select(); }
+  }
+
+  async function saveItem(andNew){
     if(ctx.saving) return;
+    andNew = andNew === true && mode === 'create';
     const name = String(draft.name || '').trim();
     if(!name){
       toast('Informe o nome do item', 'warn');
       const el = container.querySelector('[data-f="name"]');
       if(el){ el.focus(); el.scrollIntoView({ block: 'center' }); }
       return;
+    }
+    if(mode === 'create'){
+      const sn = String(draft.serial || '').trim().toLowerCase();
+      if(sn && S.items.some(i => String(i.serial || '').trim().toLowerCase() === sn)){
+        ctx.saving = true;
+        const ok = await confirmBox('Já existe um item com o nº de série “' + String(draft.serial).trim() + '”.\nSalvar mesmo assim?', { ok: 'Salvar mesmo assim', title: 'Série repetida' });
+        ctx.saving = false;
+        if(!ok){
+          const el = container.querySelector('[data-f="serial"]');
+          if(el){ el.focus(); el.scrollIntoView({ block: 'center' }); }
+          return;
+        }
+      }
     }
     ctx.saving = true;
     if(modal && modal.el) $$('.sheet-foot .btn', modal.el).forEach(b => b.disabled = true);
@@ -2077,6 +2128,13 @@ function mountItemForm(container, opts){
       }
 
       ctx.dirty = false;
+      if(andNew){
+        ctx.savedCount = (ctx.savedCount || 0) + 1;
+        ctx.lastSaved = name;
+        toast('“' + name + '” salvo! Novo cadastro aberto com os mesmos dados.');
+        resetForNext(now);
+        return;
+      }
       liveDrafts.delete(draft.id);
       toast(mode === 'create' ? 'Item cadastrado com sucesso!' : 'Item atualizado com sucesso!');
       if(modal) modal.close();
@@ -2123,7 +2181,8 @@ function mountItemForm(container, opts){
     modal.el.addEventListener('click', e => {
       const b = e.target.closest('[data-role]');
       if(!b) return;
-      if(b.dataset.role === 'save') saveItem();
+      if(b.dataset.role === 'save') saveItem(false);
+      else if(b.dataset.role === 'save-new') saveItem(true);
       else if(b.dataset.role === 'del') delItem();
     });
   }
